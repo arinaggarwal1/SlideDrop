@@ -1,7 +1,61 @@
+# OS / editor junk
+.DS_Store
+.AppleDouble
+.LSOverride
+.idea/
+.vscode/
+.codex/
+
+# Python virtual envs / caches
 venv/
+.venv/
 backend/venv/
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node / Next.js
 node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+.turbo/
+frontend/.turbo/
+
+# Frontend export copied for PyInstaller packaging
+frontend_dist/
+
+# Local env files
 .env
+.env.*
+!.env.example
+
+# Build / packaged artifacts
+build/
+dist/
+*.app
+*.dmg
+*.pkg
+*.egg-info/
+*.log
+pip-wheel-metadata/
+
+# PyInstaller caches / reports
+*.toc
+*.pyz
+warn-*.txt
+xref-*.html
+
+# Misc local files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

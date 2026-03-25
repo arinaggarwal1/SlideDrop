@@ -47,7 +47,7 @@ def create_output_directory(filename: str, custom_output_dir: str | None = None)
     if output_dir.exists():
         counter = 1
         while True:
-            output_dir = downloads / f"{base_name}_{counter}"
+            output_dir = base_dir / f"{base_name}_{counter}"
             if not output_dir.exists():
                 break
             counter += 1

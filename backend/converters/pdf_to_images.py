@@ -3,10 +3,12 @@ PDF to images converter using pdf2image (poppler).
 Renders each page at 300 DPI and saves as slide_N.png.
 """
 
+import os
+import shutil
 from pathlib import Path
 from typing import Callable, Optional
 
-from pdf2image import convert_from_path
+from pdf2image import convert_from_path, pdfinfo_from_path
 from pdf2image.exceptions import PDFInfoNotInstalledError
 
 
@@ -20,6 +22,58 @@ class PDFConversionError(Exception):
     pass
 
 
+def find_poppler_path() -> Optional[str]:
+    """Return the Poppler bin directory when pdfinfo is available."""
+    env_value = os.environ.get("SLIDEDROP_POPPLER_PATH", "").strip()
+    if env_value:
+        env_path = Path(env_value).expanduser()
+        if env_path.is_file():
+            return str(env_path.parent)
+        if (env_path / "pdfinfo").exists():
+            return str(env_path)
+
+    pdfinfo_candidates = [
+        shutil.which("pdfinfo"),
+        "/opt/homebrew/bin/pdfinfo",
+        "/opt/homebrew/opt/poppler/bin/pdfinfo",
+        "/usr/local/bin/pdfinfo",
+        "/usr/local/opt/poppler/bin/pdfinfo",
+    ]
+
+    for candidate in pdfinfo_candidates:
+        if candidate and Path(candidate).exists():
+            return str(Path(candidate).parent)
+
+    return None
+
+
+# Lazily resolved so launcher.py configure_runtime() has time to patch PATH
+# before the first lookup.  The module-level constant previously ran at import
+# time, *before* PATH was fixed, causing the bundled .app to always get None.
+_poppler_path_cache: Optional[str] = None
+_poppler_path_resolved: bool = False
+
+
+def _get_poppler_path() -> Optional[str]:
+    """Return the cached poppler path, resolving it on first call."""
+    global _poppler_path_cache, _poppler_path_resolved
+    if not _poppler_path_resolved:
+        _poppler_path_cache = find_poppler_path()
+        _poppler_path_resolved = True
+    return _poppler_path_cache
+
+
+def _poppler_install_message() -> str:
+    discovered = _get_poppler_path() or "not found"
+    return (
+        "Poppler is not installed. Please install it:\n"
+        "  macOS:  brew install poppler\n"
+        "  Linux:  sudo apt install poppler-utils\n"
+        "  Windows: Download from https://github.com/oschwartz10612/poppler-windows/releases\n"
+        f"Resolved poppler_path: {discovered}"
+    )
+
+
 def get_pdf_page_count(pdf_path: str) -> int:
     """
     Get the number of pages in a PDF without converting.
@@ -31,16 +85,10 @@ def get_pdf_page_count(pdf_path: str) -> int:
         Number of pages in the PDF.
     """
     try:
-        from pdf2image import pdfinfo_from_path
-        info = pdfinfo_from_path(pdf_path)
+        info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path())
         return info["Pages"]
-    except PDFInfoNotInstalledError:
-        raise PopplerNotFoundError(
-            "Poppler is not installed. Please install it:\n"
-            "  macOS:  brew install poppler\n"
-            "  Linux:  sudo apt install poppler-utils\n"
-            "  Windows: Download from https://github.com/oschwartz10612/poppler-windows/releases"
-        )
+    except PDFInfoNotInstalledError as exc:
+        raise PopplerNotFoundError(_poppler_install_message()) from exc
     except Exception as e:
         raise PDFConversionError(f"Failed to read PDF info: {e}")
 
@@ -75,12 +123,11 @@ def convert_pdf_to_images(
     except PopplerNotFoundError:
         raise
     except Exception:
-        total_pages = 0  # Will discover during conversion
+        total_pages = 0
 
     image_paths: list[str] = []
 
     try:
-        # Convert one page at a time for progress tracking
         pages_info = get_pdf_page_count(pdf_path) if total_pages == 0 else total_pages
 
         for page_num in range(1, pages_info + 1):
@@ -90,6 +137,7 @@ def convert_pdf_to_images(
                 first_page=page_num,
                 last_page=page_num,
                 fmt="png",
+                poppler_path=_get_poppler_path(),
             )
 
             if images:
@@ -103,12 +151,7 @@ def convert_pdf_to_images(
 
         return image_paths
 
-    except PDFInfoNotInstalledError:
-        raise PopplerNotFoundError(
-            "Poppler is not installed. Please install it:\n"
-            "  macOS:  brew install poppler\n"
-            "  Linux:  sudo apt install poppler-utils\n"
-            "  Windows: Download from https://github.com/oschwartz10612/poppler-windows/releases"
-        )
+    except PDFInfoNotInstalledError as exc:
+        raise PopplerNotFoundError(_poppler_install_message()) from exc
     except Exception as e:
         raise PDFConversionError(f"Failed to convert PDF to images: {e}")

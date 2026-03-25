@@ -1,41 +1,132 @@
 # SlideDrop
 
-**Convert PowerPoint and PDF slides into high-quality PNG images.**
+SlideDrop is a local macOS desktop app for two document workflows:
 
-SlideDrop is a local desktop tool with a polished web UI. Upload a `.pptx` or `.pdf` file, and every slide/page is exported as a 300 DPI PNG image to your Downloads folder.
+- convert PowerPoint or PDF slide decks into high-resolution PNG images
+- merge multiple PDFs into one final PDF with page-range selection and manual ordering
 
-![SlideDrop](https://img.shields.io/badge/SlideDrop-Slide%20Converter-6366f1?style=for-the-badge)
+The app is packaged as a native `.app` bundle with PyInstaller, renders its interface with `pywebview`, serves the UI from a local FastAPI backend, and uses a statically built Next.js frontend.
 
----
+## What The App Does
 
-## Features
+SlideDrop has two main tools.
 
-- 📄 **PPTX & PDF support** — accepts PowerPoint and PDF files
-- 🖼️ **300 DPI rendering** — crystal-clear images, even for small text
-- 📁 **Auto-organized output** — creates a named folder in your Downloads
-- 🌗 **Dark mode** — system-aware theme with manual toggle
-- ⚡ **Real-time progress** — live progress bar during conversion
-- 🔒 **Fully local** — files never leave your machine
+### 1. Slides to Images
 
----
+This workflow is for lecture decks, class slides, design reviews, and exported PDFs that you want as standalone images.
 
-## Prerequisites
+What it does:
 
-| Dependency | Install Command (macOS) |
-|---|---|
-| **Python 3.11+** | `brew install python@3.11` |
-| **Node.js 18+** | `brew install node` |
-| **LibreOffice** | `brew install --cask libreoffice` |
-| **Poppler** | `brew install poppler` |
+- accepts a single `.pptx` or `.pdf`
+- converts PowerPoint files to PDF using LibreOffice in headless mode
+- renders each page to a PNG image at 300 DPI using Poppler via `pdf2image`
+- writes output into an organized folder, typically in `~/Downloads`
+- optionally runs local lecture-note extraction with Ollama after rendering
+- can also extract a page range into a smaller PDF
+- can extract embedded PDF text into a `.txt` file
 
-> **LibreOffice** is required for PPTX → PDF conversion.  
-> **Poppler** is required for PDF → PNG rendering.
+Typical output:
 
----
+- `slide_1.png`
+- `slide_2.png`
+- `slide_3.png`
+- `lecture_extraction.txt` when text extraction is enabled
 
-## Quick Start
+### 2. PDF Workspace
 
-### 1. Clone and navigate
+This workflow is for assembling handouts, notes, readings, or combined packets.
+
+What it does:
+
+- opens a native macOS multi-file PDF picker
+- inspects each selected PDF and reads its page count
+- lets you drag files into the final merge order
+- lets you choose page selections per file with formats like `1-3,5,8-10`
+- saves the merged PDF to a custom folder or your Downloads folder
+- opens the merged file or reveals it in Finder
+
+Typical use cases:
+
+- combine readings from several classes into one file
+- pull only certain pages from larger PDFs
+- reorder packets before sharing or printing
+- merge scans, notes, and exported slides into one document
+
+## Architecture
+
+The app is made of four parts:
+
+- Python 3.12 backend: FastAPI + uvicorn
+- Next.js frontend: exported static build served locally
+- pywebview shell: renders the desktop window on macOS
+- PyInstaller packaging: creates the `.app` bundle and DMG
+
+At runtime:
+
+1. `launcher.py` starts the FastAPI server in-process on a local port.
+2. The bundled frontend is served from the embedded backend.
+3. `pywebview` opens a native macOS window pointed at the local app URL.
+4. File conversion and PDF operations happen locally on the machine.
+
+No cloud upload is required for the core app workflows.
+
+## Key Features
+
+- local-first desktop app for macOS
+- single-file slide conversion for `.pptx` and `.pdf`
+- dedicated PDF merge workspace
+- page-range extraction for PDFs
+- embedded text extraction from PDFs
+- optional Ollama-based lecture-note extraction
+- native folder picker for save destinations
+- native file picker for multi-PDF merge selection
+- packaged `.app` bundle and `.dmg` output
+- works in development mode and bundled mode
+
+## Requirements
+
+### Runtime dependencies
+
+These tools are required on macOS for the app to work correctly.
+
+| Dependency | Why it is needed | Install command |
+| --- | --- | --- |
+| Python 3.12+ | backend, build tooling | `brew install python@3.12` |
+| Node.js 20+ recommended | frontend build | `brew install node` |
+| LibreOffice | PowerPoint to PDF conversion | `brew install --cask libreoffice` |
+| Poppler | PDF page inspection and PNG rendering | `brew install poppler` |
+| create-dmg | DMG packaging | `brew install create-dmg` |
+
+### Python packages
+
+Install from:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+Main Python packages used by the app:
+
+- `fastapi`
+- `uvicorn`
+- `pywebview`
+- `pypdf`
+- `pdf2image`
+- `Pillow`
+- `httpx`
+
+### Frontend packages
+
+Install from the frontend directory:
+
+```bash
+cd frontend
+npm ci
+```
+
+## Development Setup
+
+### 1. Clone the project
 
 ```bash
 cd SlideDrop
@@ -44,99 +135,309 @@ cd SlideDrop
 ### 2. Install backend dependencies
 
 ```bash
-pip install -r backend/requirements.txt
+python3 -m pip install -r backend/requirements.txt
 ```
 
 ### 3. Install frontend dependencies
 
 ```bash
 cd frontend
-npm install
+npm ci
 cd ..
 ```
 
-### 4. Run the app
+### 4. Run the app in development mode
 
 ```bash
-python run_app.py
+python3 run_app.py
 ```
 
-This will:
-- Start the backend on `http://localhost:8000`
-- Start the frontend on `http://localhost:3000`
-- Open your browser to `http://localhost:3000`
+This starts:
 
----
+- the backend on `http://127.0.0.1:8000`
+- the frontend dev server on `http://127.0.0.1:3000`
 
-## Manual Start (Alternative)
+### Manual dev startup
 
-**Terminal 1 — Backend:**
+Backend:
 
 ```bash
 cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-**Terminal 2 — Frontend:**
+Frontend:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
+## Desktop Build
 
----
+The project includes a build script that creates both:
 
-## How It Works
+- `dist/SlideDrop.app`
+- `dist/SlideDrop.dmg`
 
-1. **Upload** a `.pptx` or `.pdf` file via drag-and-drop or file picker
-2. If PPTX: automatically converts to PDF using LibreOffice headless
-3. Each PDF page is rendered to PNG at 300 DPI using pdf2image (Poppler)
-4. Images are saved as `slide_1.png`, `slide_2.png`, etc.
-5. Output folder: `~/Downloads/<filename>_slides/`
+Build command:
 
----
+```bash
+python3 build.py --app-name SlideDrop --spec SlideDrop.spec
+```
 
-## API Endpoints
+What the build script does:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/upload` | Upload a file, returns job ID + page count |
-| `POST` | `/convert` | Start conversion for a job |
-| `GET` | `/status?job_id=...` | Get conversion progress |
-| `GET` | `/health` | Health check |
+1. cleans previous `dist`, `build`, and `frontend_dist` output
+2. runs `npm ci`
+3. runs the production frontend build
+4. copies the static frontend export into `frontend_dist`
+5. runs PyInstaller with `SlideDrop.spec`
+6. creates a DMG using `create-dmg`
 
----
+If you only want to rebuild the app bundle manually:
+
+```bash
+export SLIDEDROP_DESKTOP_BUILD=1
+cd frontend && npm run build && cd ..
+mkdir -p frontend_dist
+rm -rf frontend_dist/*
+cp -R frontend/out/. frontend_dist/
+python3 -m PyInstaller SlideDrop.spec --noconfirm --clean
+```
+
+## Running The Packaged App
+
+After building, launch the app bundle normally from Finder or run it from Terminal for visible logs.
+
+```bash
+dist/SlideDrop.app/Contents/MacOS/SlideDrop
+```
+
+Running from Terminal is helpful when debugging packaging or startup issues because windowed macOS apps do not always show Python exceptions directly.
+
+## Desktop Packaging Notes
+
+The project is set up to work in both development mode and bundled mode.
+
+Important packaging behaviors:
+
+- frontend assets are bundled from `frontend_dist`
+- the launcher resolves paths through `sys._MEIPASS` when frozen
+- `pywebview` hidden imports are declared in the spec files
+- the app starts the backend safely in a background thread
+- startup errors are written to a log file when needed
+- Homebrew paths are added at runtime so Poppler and LibreOffice are visible inside the packaged app
+
+Relevant files:
+
+- `launcher.py`
+- `SlideDrop.spec`
+- `build.py`
+- `backend/main.py`
+- `frontend/next.config.ts`
+- `frontend/lib/api.ts`
+
+## PDF Merge Workflow Details
+
+The merge workspace is intentionally separate from the slide converter.
+
+Current merge flow:
+
+1. open the PDF workspace from the home screen
+2. click `Choose PDFs`
+3. select one or more PDFs in the native macOS picker
+4. drag file cards into the order you want
+5. edit page ranges per file
+6. choose an output filename
+7. optionally choose a save folder
+8. click `Merge PDFs`
+9. open the merged file or reveal it in Finder
+
+Page selection format:
+
+- `all`
+- `1`
+- `1-4`
+- `1-3,5,8-10`
+
+Validation rules:
+
+- page numbers must start at 1
+- ranges must be ascending
+- selected pages must exist within that PDF
+- at least one page must be selected overall
+
+## Slide Conversion Workflow Details
+
+Current conversion flow:
+
+1. open `Slides to Images`
+2. upload one `.pptx` or `.pdf`
+3. optionally choose a custom save folder
+4. optionally enable Ollama lecture-note extraction
+5. click `Convert Slides`
+6. watch live progress during rendering
+7. open the output folder in Finder from the completion screen
+
+If the uploaded file is a PowerPoint:
+
+- LibreOffice converts it to PDF first
+- the PDF is then rendered page-by-page to PNGs
+
+If the uploaded file is a PDF:
+
+- the PDF is rendered directly to PNGs
+
+## API Overview
+
+The frontend talks to the local FastAPI backend.
+
+### Conversion endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/upload` | upload a single `.pptx` or `.pdf` |
+| `POST` | `/convert` | start slide conversion for a job |
+| `GET` | `/status?job_id=...` | poll conversion progress |
+| `POST` | `/extract-pdf-range` | download a smaller PDF for a selected page range |
+| `POST` | `/extract-pdf-text` | download embedded PDF text as `.txt` |
+
+### Merge endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/dialog/select-pdfs` | open the native PDF picker |
+| `POST` | `/pdfs/inspect` | inspect selected PDFs and get page counts |
+| `POST` | `/merge-pdfs` | merge ordered PDF inputs with page ranges |
+| `POST` | `/dialog/select-folder` | open the native folder picker |
+| `POST` | `/open-location` | open a file or folder in Finder |
+
+### Utility endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | health check |
+| `GET` | `/debug/ollama` | local Ollama debug information |
 
 ## Project Structure
 
-```
+```text
 SlideDrop/
-├── run_app.py                  # Launch script
 ├── README.md
+├── .gitignore
+├── SlideDrop.spec
+├── MyApp.spec
+├── launcher.py
+├── build.py
+├── build.sh
+├── run_app.py
+├── resources/
 ├── backend/
-│   ├── main.py                 # FastAPI application
+│   ├── main.py
 │   ├── requirements.txt
 │   ├── converters/
-│   │   ├── pptx_to_pdf.py      # PPTX → PDF (LibreOffice)
-│   │   └── pdf_to_images.py    # PDF → PNG (pdf2image)
+│   │   ├── pdf_to_images.py
+│   │   ├── pptx_to_pdf.py
+│   │   └── slide_extractor.py
 │   └── utils/
-│       └── file_manager.py     # Downloads folder & file utilities
-└── frontend/
-    ├── app/
-    │   ├── layout.tsx           # Root layout with theme provider
-    │   ├── page.tsx             # Main page (upload/process/done)
-    │   └── globals.css          # Theme & animations
-    └── components/
-        ├── UploadZone.tsx       # Drag-and-drop upload area
-        ├── ProcessingView.tsx   # Progress bar + status
-        ├── FinishedView.tsx     # Success + open folder
-        ├── ThemeProvider.tsx    # Dark/light mode provider
-        └── ThemeToggle.tsx      # Theme toggle button
+│       └── file_manager.py
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   ├── next.config.ts
+│   └── package.json
+└── frontend_dist/
 ```
 
----
+## Troubleshooting
+
+### The packaged app opens and immediately closes
+
+Run it from Terminal:
+
+```bash
+dist/SlideDrop.app/Contents/MacOS/SlideDrop
+```
+
+Then check:
+
+- missing hidden imports in the spec file
+- missing `frontend_dist` assets
+- incorrect path handling in bundled mode
+- backend startup errors in `launcher.py`
+
+### Poppler appears installed but the app says it is missing
+
+The packaged app does not always inherit the same shell `PATH` as your terminal.
+
+SlideDrop now checks common Homebrew locations, including:
+
+- `/opt/homebrew/bin`
+- `/opt/homebrew/opt/poppler/bin`
+- `/usr/local/bin`
+- `/usr/local/opt/poppler/bin`
+
+Verify:
+
+```bash
+which pdfinfo
+which pdftoppm
+brew install poppler
+```
+
+### LibreOffice is not found for PPTX conversion
+
+Verify:
+
+```bash
+brew install --cask libreoffice
+which soffice
+```
+
+SlideDrop also checks common macOS locations such as:
+
+- `/Applications/LibreOffice.app/Contents/MacOS/soffice`
+- `/opt/homebrew/bin/soffice`
+- `/usr/local/bin/soffice`
+
+### The merge PDF picker throws an AppleScript error
+
+The app uses `osascript` for native folder and file pickers on macOS. If this fails:
+
+- make sure the app has permission to show dialogs
+- try launching the app directly from Terminal once
+- rebuild with the latest `SlideDrop.spec` and `build.py`
+
+### Finder actions do not open
+
+The packaged app uses a backend endpoint that calls macOS `open` on the target path. If Finder actions fail, verify the file or folder still exists and try again from a fresh build.
+
+## Output Locations
+
+By default:
+
+- converted slide image folders are created in `~/Downloads`
+- merged PDFs are saved in `~/Downloads` unless you choose another folder
+
+Custom output folders are supported through the native folder picker or manual path entry.
+
+## Privacy
+
+Files are processed locally.
+
+Core conversion and merge workflows do not require uploading documents to a remote service. If you enable local Ollama extraction, inference still runs on your own machine.
+
+## Notes For Contributors
+
+When changing desktop packaging behavior, pay special attention to:
+
+- hidden imports in `SlideDrop.spec`
+- path resolution through `_MEIPASS`
+- `frontend_dist` inclusion
+- native macOS picker behavior via `osascript`
+- Homebrew binary visibility in bundled mode
 
 ## License
 

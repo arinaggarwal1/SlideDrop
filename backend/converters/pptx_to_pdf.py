@@ -22,7 +22,10 @@ def find_libreoffice() -> str:
     # Common locations on macOS
     mac_paths = [
         "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+        "/opt/homebrew/bin/soffice",
         "/usr/local/bin/soffice",
+        "/opt/homebrew/bin/libreoffice",
+        "/usr/local/bin/libreoffice",
     ]
 
     # Check if soffice is in PATH

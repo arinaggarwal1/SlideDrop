@@ -9,8 +9,10 @@ import os
 import sys
 import time
 import signal
+import socket
 import subprocess
 import webbrowser
+import urllib.request
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.resolve()
@@ -32,12 +34,33 @@ def cleanup(signum=None, frame=None):
     sys.exit(0)
 
 
+def is_port_open(host: str, port: int) -> bool:
+    """Return True when a TCP port is accepting connections."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex((host, port)) == 0
+
+
+def wait_for_url(url: str, timeout: float = 20.0) -> bool:
+    """Wait until a URL responds successfully."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with urllib.request.urlopen(url, timeout=1.5) as response:
+                if 200 <= response.status < 500:
+                    return True
+        except Exception:
+            time.sleep(0.25)
+    return False
+
+
 def check_prerequisites():
     """Verify that required tools are available."""
     # Check Python packages
     try:
         import fastapi  # noqa: F401
         import pdf2image  # noqa: F401
+        import pypdf  # noqa: F401
     except ImportError:
         print("📦 Installing backend dependencies...")
         subprocess.run(
@@ -66,31 +89,49 @@ def main():
 
     check_prerequisites()
 
-    # Start backend
-    print("🚀 Starting backend server (port 8000)...")
-    backend_proc = subprocess.Popen(
-        [
-            sys.executable, "-m", "uvicorn",
-            "main:app",
-            "--host", "0.0.0.0",
-            "--port", "8000",
-            "--reload",
-        ],
-        cwd=str(BACKEND_DIR),
-        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-    )
-    processes.append(backend_proc)
+    backend_proc = None
+    frontend_proc = None
 
-    # Start frontend
-    print("🚀 Starting frontend server (port 3000)...")
-    frontend_proc = subprocess.Popen(
-        ["npm", "run", "dev"],
-        cwd=str(FRONTEND_DIR),
-    )
-    processes.append(frontend_proc)
+    # Start or reuse backend
+    if wait_for_url("http://127.0.0.1:8000/health", timeout=1.5):
+        print("♻️  Reusing backend server already running on port 8000.")
+    else:
+        print("🚀 Starting backend server (port 8000)...")
+        backend_proc = subprocess.Popen(
+            [
+                sys.executable, "-m", "uvicorn",
+                "main:app",
+                "--host", "0.0.0.0",
+                "--port", "8000",
+                "--reload",
+            ],
+            cwd=str(BACKEND_DIR),
+            env={
+                **os.environ,
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "SLIDEDROP_APP_MODE": "development",
+            },
+        )
+        processes.append(backend_proc)
 
-    # Wait a moment before opening browser
-    time.sleep(3)
+        if not wait_for_url("http://127.0.0.1:8000/health", timeout=20):
+            print("⚠️  Backend server failed to become ready.")
+            cleanup()
+
+    # Start or reuse frontend
+    if is_port_open("127.0.0.1", 3000):
+        print("♻️  Reusing frontend server already running on port 3000.")
+    else:
+        print("🚀 Starting frontend server (port 3000)...")
+        frontend_proc = subprocess.Popen(
+            ["npm", "run", "dev"],
+            cwd=str(FRONTEND_DIR),
+        )
+        processes.append(frontend_proc)
+
+        if not wait_for_url("http://127.0.0.1:3000", timeout=30):
+            print("⚠️  Frontend server failed to become ready.")
+            cleanup()
 
     url = "http://localhost:3000"
     print()
@@ -104,10 +145,10 @@ def main():
     try:
         while True:
             # Check if either process has exited
-            if backend_proc.poll() is not None:
+            if backend_proc is not None and backend_proc.poll() is not None:
                 print("⚠️  Backend server stopped unexpectedly.")
                 cleanup()
-            if frontend_proc.poll() is not None:
+            if frontend_proc is not None and frontend_proc.poll() is not None:
                 print("⚠️  Frontend server stopped unexpectedly.")
                 cleanup()
             time.sleep(1)
