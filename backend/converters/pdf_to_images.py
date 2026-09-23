@@ -5,6 +5,7 @@ Renders each page at 300 DPI and saves as slide_N.png.
 
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -84,6 +85,19 @@ def get_pdf_page_count(pdf_path: str) -> int:
     Returns:
         Number of pages in the PDF.
     """
+    if sys.platform == "win32":
+        try:
+            import fitz
+
+            with fitz.open(pdf_path) as document:
+                return document.page_count
+        except ImportError as exc:
+            raise PopplerNotFoundError(
+                "The Windows PDF renderer is missing. Reinstall SlideDrop or install PyMuPDF."
+            ) from exc
+        except Exception as exc:
+            raise PDFConversionError(f"Failed to read PDF info: {exc}") from exc
+
     try:
         info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path())
         return info["Pages"]
@@ -115,6 +129,9 @@ def convert_pdf_to_images(
         PopplerNotFoundError: If Poppler is not installed.
         PDFConversionError: If conversion fails.
     """
+    if sys.platform == "win32":
+        return _convert_pdf_to_images_windows(pdf_path, output_dir, dpi, on_progress)
+
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -155,3 +172,37 @@ def convert_pdf_to_images(
         raise PopplerNotFoundError(_poppler_install_message()) from exc
     except Exception as e:
         raise PDFConversionError(f"Failed to convert PDF to images: {e}")
+
+
+def _convert_pdf_to_images_windows(
+    pdf_path: str,
+    output_dir: str,
+    dpi: int,
+    on_progress: Optional[Callable[[int, int], None]],
+) -> list[str]:
+    """Render PDFs with PyMuPDF on Windows, avoiding a separate Poppler install."""
+    try:
+        import fitz
+    except ImportError as exc:
+        raise PopplerNotFoundError(
+            "The Windows PDF renderer is missing. Reinstall SlideDrop or install PyMuPDF."
+        ) from exc
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    image_paths: list[str] = []
+    scale = dpi / 72
+
+    try:
+        with fitz.open(pdf_path) as document:
+            total_pages = document.page_count
+            matrix = fitz.Matrix(scale, scale)
+            for page_index, page in enumerate(document, start=1):
+                image_path = out_dir / f"slide_{page_index}.png"
+                page.get_pixmap(matrix=matrix, alpha=False).save(str(image_path))
+                image_paths.append(str(image_path))
+                if on_progress:
+                    on_progress(page_index, total_pages)
+        return image_paths
+    except Exception as exc:
+        raise PDFConversionError(f"Failed to convert PDF to images: {exc}") from exc

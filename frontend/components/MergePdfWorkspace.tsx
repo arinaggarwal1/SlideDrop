@@ -347,7 +347,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
               disabled={isOpeningPath}
             >
               <FolderOpen className="mr-2 h-4 w-4" />
-              Reveal in Finder
+              Show in Folder
             </Button>
           </div>
 
@@ -410,7 +410,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
                   Add PDFs
                 </h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                  Use the native macOS picker so you can grab a full set of files at once, then fine-tune exactly which pages make it into the final document.
+                  Use your system file picker to grab a full set of files at once, then fine-tune exactly which pages make it into the final document.
                 </p>
               </div>
               <Button

@@ -39,6 +39,8 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
   const [isExtractingRange, setIsExtractingRange] = useState(false);
   const [isExtractingText, setIsExtractingText] = useState(false);
   const [isBrowsingFolder, setIsBrowsingFolder] = useState(false);
+  const [rangeStatus, setRangeStatus] = useState("");
+  const [textStatus, setTextStatus] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const storeUploadedFile = useCallback((data: {
@@ -54,6 +56,8 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
       pageCount: data.page_count,
     });
     setPageRange(`1-${data.page_count}`);
+    setRangeStatus("");
+    setTextStatus("");
   }, []);
 
   const uploadSingleFile = useCallback(
@@ -179,6 +183,22 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
     }
   }, [onError]);
 
+  const revealSavedFile = useCallback(
+    async (path: string, fallbackMessage: string) => {
+      const res = await fetch(apiUrl("/open-location"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail || fallbackMessage);
+      }
+    },
+    []
+  );
+
   const handleExtractRange = useCallback(async () => {
     if (!uploadedFile) {
       return;
@@ -189,6 +209,7 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
     }
 
     setIsExtractingRange(true);
+    setRangeStatus("");
     try {
       const res = await fetch(apiUrl("/extract-pdf-range"), {
         method: "POST",
@@ -196,6 +217,7 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
         body: JSON.stringify({
           job_id: uploadedFile.jobId,
           page_range: pageRange.trim(),
+          output_folder: customFolder.trim() || undefined,
         }),
       });
 
@@ -204,19 +226,9 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
         throw new Error(data.detail || "Failed to extract page range.");
       }
 
-      const blob = await res.blob();
-      const contentDisposition = res.headers.get("content-disposition") || "";
-      const filenameMatch = /filename=\"?([^\"]+)\"?/.exec(contentDisposition);
-      const downloadName = filenameMatch?.[1] || "extracted_pages.pdf";
-
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = downloadName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      const data = await res.json();
+      await revealSavedFile(data.output_path, "Failed to show the extracted PDF in its folder.");
+      setRangeStatus(`Saved ${data.filename} to ${data.output_folder}.`);
     } catch (err) {
       onError(
         err instanceof Error
@@ -226,7 +238,7 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
     } finally {
       setIsExtractingRange(false);
     }
-  }, [onError, pageRange, uploadedFile]);
+  }, [customFolder, onError, pageRange, revealSavedFile, uploadedFile]);
 
   const handleExtractText = useCallback(async () => {
     if (!uploadedFile) {
@@ -234,12 +246,14 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
     }
 
     setIsExtractingText(true);
+    setTextStatus("");
     try {
       const res = await fetch(apiUrl("/extract-pdf-text"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           job_id: uploadedFile.jobId,
+          output_folder: customFolder.trim() || undefined,
         }),
       });
 
@@ -248,19 +262,9 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
         throw new Error(data.detail || "Failed to extract PDF text.");
       }
 
-      const blob = await res.blob();
-      const contentDisposition = res.headers.get("content-disposition") || "";
-      const filenameMatch = /filename=\"?([^\"]+)\"?/.exec(contentDisposition);
-      const downloadName = filenameMatch?.[1] || "pdf_text.txt";
-
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = downloadName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      const data = await res.json();
+      await revealSavedFile(data.output_path, "Failed to show the extracted text file in its folder.");
+      setTextStatus(`Saved ${data.filename} to ${data.output_folder}.`);
     } catch (err) {
       onError(
         err instanceof Error
@@ -270,12 +274,14 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
     } finally {
       setIsExtractingText(false);
     }
-  }, [onError, uploadedFile]);
+  }, [customFolder, onError, revealSavedFile, uploadedFile]);
 
   const resetUpload = () => {
     setUploadedFile(null);
     setCustomFolder("");
     setPageRange("");
+    setRangeStatus("");
+    setTextStatus("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -289,6 +295,11 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
   };
 
   const pageLabel = uploadedFile?.fileType === ".pptx" ? "slides" : "pages";
+  const rangeExample = uploadedFile?.fileType === ".pptx" ? "e.g. 38-41" : "e.g. 20-40";
+  const rangeHelpText =
+    uploadedFile?.fileType === ".pptx"
+      ? "Example: 38-41 (inclusive). Save a new PDF using the presentation's original slide numbers."
+      : "Example: 20-40 (inclusive). Save a new PDF with only those pages.";
 
   return (
     <div className="animate-fade-in-up w-full max-w-lg mx-auto">
@@ -398,13 +409,13 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
               <div className="text-left">
                 <label className="text-sm font-medium text-foreground">Extract Sub-PDF by Page Range</label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Example: 20-40 (inclusive). Download a new PDF with only those pages.
+                  {rangeHelpText}
                 </p>
               </div>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="e.g. 20-40"
+                  placeholder={rangeExample}
                   value={pageRange}
                   onChange={(event) => setPageRange(event.target.value)}
                   className="flex h-10 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors duration-200"
@@ -416,9 +427,14 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
                   disabled={isExtractingRange}
                   className="rounded-xl shrink-0 cursor-pointer"
                 >
-                  {isExtractingRange ? "Preparing..." : "Download"}
+                  {isExtractingRange ? "Preparing..." : "Save PDF"}
                 </Button>
               </div>
+              {rangeStatus && (
+                <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  {rangeStatus}
+                </p>
+              )}
             </div>
 
             {uploadedFile.fileType === ".pdf" && (
@@ -426,7 +442,7 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
                 <div className="text-left">
                   <label className="text-sm font-medium text-foreground">Extract Embedded PDF Text</label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Downloads a plain text file using the text already embedded in the PDF.
+                    Saves a plain text file using the text already embedded in the PDF.
                   </p>
                 </div>
                 <Button
@@ -436,8 +452,13 @@ export function UploadZone({ onFileUploaded, onError }: UploadZoneProps) {
                   disabled={isExtractingText}
                   className="w-full rounded-xl cursor-pointer"
                 >
-                  {isExtractingText ? "Preparing Text..." : "Download Text File"}
+                  {isExtractingText ? "Preparing Text..." : "Save Text File"}
                 </Button>
+                {textStatus && (
+                  <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                    {textStatus}
+                  </p>
+                )}
               </div>
             )}
 

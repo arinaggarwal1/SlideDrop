@@ -56,7 +56,14 @@ def _find_ollama_bin() -> str:
     for p in ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]:
         if os.path.isfile(p):
             return p
-    raise FileNotFoundError("Ollama is not installed. Install with: brew install ollama")
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        windows_path = Path(local_app_data) / "Programs" / "Ollama" / "ollama.exe"
+        if windows_path.is_file():
+            return str(windows_path)
+    raise FileNotFoundError(
+        "Ollama is not installed. Install it from https://ollama.com/download."
+    )
 
 
 def _is_ollama_running() -> bool:

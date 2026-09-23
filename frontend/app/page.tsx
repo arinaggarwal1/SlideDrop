@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
-import { FileImage, FileStack, Layers } from "lucide-react";
+import { FileImage, FileStack, FileText, Layers } from "lucide-react";
 
+import { ExtractionEnginePanel } from "@/components/ExtractionEnginePanel";
 import { FinishedView } from "@/components/FinishedView";
 import { MergePdfWorkspace } from "@/components/MergePdfWorkspace";
 import { ProcessingView } from "@/components/ProcessingView";
@@ -11,7 +12,14 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { UploadZone } from "@/components/UploadZone";
 import { Button } from "@/components/ui/button";
 
-type AppState = "home" | "convert" | "merge" | "processing" | "finished" | "error";
+type AppState =
+  | "home"
+  | "convert"
+  | "merge"
+  | "promptBuilder"
+  | "processing"
+  | "finished"
+  | "error";
 
 interface FileInfo {
   jobId: string;
@@ -66,6 +74,7 @@ export default function Home() {
   const [outputFolder, setOutputFolder] = useState("");
   const [extractionFile, setExtractionFile] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [promptBuilderSourceFolder, setPromptBuilderSourceFolder] = useState<string | undefined>();
 
   const handleFileUploaded = useCallback((data: FileInfo) => {
     setFileInfo(data);
@@ -96,11 +105,18 @@ export default function Home() {
     setAppState("merge");
   }, []);
 
+  const handleSelectPromptBuilder = useCallback((sourceFolder?: string) => {
+    setErrorMessage("");
+    setPromptBuilderSourceFolder(sourceFolder);
+    setAppState("promptBuilder");
+  }, []);
+
   const handleBackHome = useCallback(() => {
     setFileInfo(null);
     setOutputFolder("");
     setExtractionFile("");
     setErrorMessage("");
+    setPromptBuilderSourceFolder(undefined);
     setAppState("home");
   }, []);
 
@@ -109,11 +125,14 @@ export default function Home() {
     setOutputFolder("");
     setExtractionFile("");
     setErrorMessage("");
+    setPromptBuilderSourceFolder(undefined);
     setAppState("convert");
   }, []);
 
   const containerClass =
-    appState === "merge" || appState === "home" ? "max-w-6xl" : "max-w-2xl";
+    appState === "merge" || appState === "home" || appState === "promptBuilder"
+      ? "max-w-6xl"
+      : "max-w-2xl";
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,rgba(250,251,255,1),rgba(245,247,250,1))] dark:bg-[linear-gradient(180deg,rgba(15,18,27,1),rgba(12,15,22,1))]">
@@ -149,7 +168,7 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="mt-8 grid gap-4 lg:grid-cols-2">
+              <div className="mt-8 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 <ToolCard
                   title="Slides to Images"
                   description="Upload one PowerPoint or PDF and export each slide as a PNG. You can also save to a custom folder or extract text locally."
@@ -163,6 +182,13 @@ export default function Home() {
                   actionLabel="Open Merge Workspace"
                   icon={<FileStack className="h-6 w-6" />}
                   onClick={handleSelectMerge}
+                />
+                <ToolCard
+                  title="Extraction Engine"
+                  description="Start from the exact lecture prompt you already use, then generate a domain-adapted version locally with Ollama without changing the rest of your workflow."
+                  actionLabel="Open Extraction Engine"
+                  icon={<FileText className="h-6 w-6" />}
+                  onClick={() => handleSelectPromptBuilder()}
                 />
               </div>
             </div>
@@ -191,6 +217,13 @@ export default function Home() {
 
           {appState === "merge" && <MergePdfWorkspace onBack={handleBackHome} />}
 
+          {appState === "promptBuilder" && (
+            <ExtractionEnginePanel
+              onBack={handleBackHome}
+              sourceOutputFolder={promptBuilderSourceFolder}
+            />
+          )}
+
           {appState === "processing" && fileInfo && (
             <ProcessingView
               jobId={fileInfo.jobId}
@@ -217,6 +250,7 @@ export default function Home() {
               <FinishedView
                 outputFolder={outputFolder}
                 extractionFile={extractionFile}
+                onBuildExtractionPrompt={() => handleSelectPromptBuilder(outputFolder)}
                 onConvertAnother={handleConvertAnother}
               />
             </div>

@@ -43,6 +43,7 @@ from converters.slide_extractor import (
     OLLAMA_HOST,
     run_extraction,
 )
+from prompt_builder import PromptBuilderError, generate_custom_prompt
 from utils.file_manager import (
     create_output_directory,
     create_temp_directory,
@@ -51,6 +52,7 @@ from utils.file_manager import (
     get_file_extension,
     is_supported_file,
 )
+from platform_services import desktop_platform
 
 # ---------------------------------------------------------------------------
 # Frontend static directory detection (bundled and local)
@@ -168,10 +170,12 @@ class ConvertRequest(BaseModel):
 class PdfRangeRequest(BaseModel):
     job_id: str
     page_range: str  # e.g. "20-40" or "12"
+    output_folder: Optional[str] = None
 
 
 class PdfTextRequest(BaseModel):
     job_id: str
+    output_folder: Optional[str] = None
 
 
 class SelectFolderResponse(BaseModel):
@@ -204,9 +208,24 @@ class ActionResponse(BaseModel):
     ok: bool
 
 
+class SavedFileResponse(BaseModel):
+    ok: bool
+    output_path: str
+    output_folder: str
+    filename: str
+
+
 class ConvertResponse(BaseModel):
     job_id: str
     message: str
+
+
+class PromptBuilderGenerateRequest(BaseModel):
+    use_case: str
+
+
+class PromptBuilderResponse(BaseModel):
+    prompt: str
 
 
 class MergePdfItemRequest(BaseModel):
@@ -306,63 +325,13 @@ def _create_upload_job(
 
 
 def _choose_folder() -> Optional[str]:
-    """Open a native macOS folder picker and return a POSIX path."""
-    if sys.platform != "darwin":
-        raise RuntimeError("Folder selection is only supported on macOS in this desktop build.")
-
-    result = subprocess.run(
-        [
-            "osascript",
-            "-e",
-            'POSIX path of (choose folder with prompt "Select a save folder")',
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode == 0:
-        return result.stdout.strip() or None
-
-    stderr = (result.stderr or "").strip()
-    if "-128" in stderr:
-        return None
-
-    raise RuntimeError(stderr or "Failed to open the folder picker.")
+    """Open the current platform's native folder picker."""
+    return desktop_platform.choose_folder()
 
 
 def _choose_pdf_files() -> list[str]:
-    """Open a native macOS multi-select PDF picker and return POSIX paths."""
-    if sys.platform != "darwin":
-        raise RuntimeError("PDF selection is only supported on macOS in this desktop build.")
-
-    result = subprocess.run(
-        [
-            "osascript",
-            "-e",
-            'set chosenFiles to choose file of type {"com.adobe.pdf"} with prompt "Select PDF files to merge" with multiple selections allowed',
-            "-e",
-            'set output to ""',
-            "-e",
-            "repeat with chosenFile in chosenFiles",
-            "-e",
-            'set output to output & POSIX path of chosenFile & linefeed',
-            "-e",
-            "end repeat",
-            "-e",
-            "return output",
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode == 0:
-        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-
-    stderr = (result.stderr or "").strip()
-    if "-128" in stderr:
-        return []
-
-    raise RuntimeError(stderr or "Failed to open the PDF picker.")
+    """Open the current platform's native multi-select PDF picker."""
+    return desktop_platform.choose_pdf_files()
 
 
 def _merge_pdf_sources(sources: list[tuple[str, str]], temp_dir: str) -> UploadResponse:
@@ -420,6 +389,40 @@ def _parse_page_range(page_range: str, total_pages: int) -> tuple[int, int]:
     return start, end
 
 
+def _resolve_pdf_page_range(page_range: str, reader: PdfReader) -> tuple[int, int]:
+    """Resolve a PDF range using embedded page labels when available, else physical pages."""
+    total_pages = len(reader.pages)
+    start, end = _parse_page_range(page_range, max(total_pages, 10**9))
+
+    page_labels = getattr(reader, "page_labels", None) or []
+    if page_labels:
+        label_to_index: dict[str, int] = {}
+        for index, label in enumerate(page_labels):
+            normalized_label = str(label).strip()
+            if normalized_label.isdigit() and normalized_label not in label_to_index:
+                label_to_index[normalized_label] = index
+
+        start_label = str(start)
+        end_label = str(end)
+        if start_label in label_to_index and end_label in label_to_index:
+            start_index = label_to_index[start_label]
+            end_index = label_to_index[end_label]
+            expected_labels = [str(value) for value in range(start, end + 1)]
+            actual_labels = [str(label).strip() for label in page_labels[start_index : end_index + 1]]
+
+            if (
+                start_index <= end_index
+                and len(actual_labels) == len(expected_labels)
+                and actual_labels == expected_labels
+            ):
+                return start_index, end_index
+
+    if end > total_pages:
+        raise ValueError(f"Page range exceeds document length ({total_pages} pages).")
+
+    return start - 1, end - 1
+
+
 def _parse_page_selection(page_range: Optional[str], total_pages: int) -> list[int]:
     """Parse page selections like '1-3,5,8-10' into zero-based indices."""
     if total_pages < 1:
@@ -457,20 +460,12 @@ def _parse_page_selection(page_range: Optional[str], total_pages: int) -> list[i
     return indices
 
 
-def _build_output_pdf_path(output_folder: Optional[str], output_name: Optional[str]) -> Path:
-    """Resolve a merged PDF output path and avoid collisions."""
-    base_dir = (
-        Path(output_folder).expanduser().resolve()
-        if output_folder
-        else get_downloads_folder()
-    )
+def _build_output_file_path(output_folder: Optional[str], output_name: str) -> Path:
+    """Resolve an output file path and avoid filename collisions."""
+    base_dir = Path(output_folder).expanduser().resolve() if output_folder else get_downloads_folder()
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    candidate_name = Path((output_name or "").strip() or "merged_document.pdf").name
-    if not candidate_name.lower().endswith(".pdf"):
-        candidate_name = f"{candidate_name}.pdf"
-
-    destination = base_dir / candidate_name
+    destination = base_dir / Path(output_name).name
     if not destination.exists():
         return destination
 
@@ -482,6 +477,14 @@ def _build_output_pdf_path(output_folder: Optional[str], output_name: Optional[s
         if not candidate.exists():
             return candidate
         counter += 1
+
+
+def _build_output_pdf_path(output_folder: Optional[str], output_name: Optional[str]) -> Path:
+    """Resolve a merged PDF output path and avoid collisions."""
+    candidate_name = Path((output_name or "").strip() or "merged_document.pdf").name
+    if not candidate_name.lower().endswith(".pdf"):
+        candidate_name = f"{candidate_name}.pdf"
+    return _build_output_file_path(output_folder, candidate_name)
 
 
 # ---------------------------------------------------------------------------
@@ -583,6 +586,19 @@ async def select_folder_dialog():
         return SelectFolderResponse(path=_choose_folder())
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/prompt-builder/generate", response_model=PromptBuilderResponse)
+async def prompt_builder_generate(req: PromptBuilderGenerateRequest):
+    """Generate a rigor-preserving extraction prompt for a custom use case."""
+    try:
+        prompt_text = await generate_custom_prompt(req.use_case)
+        return PromptBuilderResponse(prompt=prompt_text)
+    except PromptBuilderError as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"code": e.code, "message": e.message},
+        )
 
 
 @app.post("/dialog/select-pdfs", response_model=SelectFilesResponse)
@@ -707,29 +723,30 @@ async def merge_pdfs(req: MergePdfsRequest):
 
 @app.post("/open-location", response_model=ActionResponse)
 async def open_location(req: OpenLocationRequest):
-    """Open a file or folder in Finder."""
+    """Reveal a file or open a folder in the platform file manager."""
     target = Path(req.path).expanduser().resolve()
     if not target.exists():
         raise HTTPException(status_code=404, detail="The selected location no longer exists.")
 
     try:
-        subprocess.run(["open", str(target)], check=True)
+        desktop_platform.reveal_path(target)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to open location: {e}")
 
     return ActionResponse(ok=True)
 
 
-@app.post("/extract-pdf-range")
+@app.post("/extract-pdf-range", response_model=SavedFileResponse)
 async def extract_pdf_range(req: PdfRangeRequest):
-    """Extract a page range from an uploaded file and return it as a PDF download."""
+    """Extract a page range from an uploaded file and save it as a PDF."""
     job = jobs.get(req.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
     pdf_path = job.get("pdf_path")
-    temp_dir = job.get("temp_dir")
+    saved_path = job.get("saved_path")
     filename = job.get("filename", "document")
+    file_type = job.get("file_type", "").lower()
     total_pages = job.get("page_count", 0)
 
     if not pdf_path or not os.path.exists(pdf_path):
@@ -739,40 +756,60 @@ async def extract_pdf_range(req: PdfRangeRequest):
         )
 
     try:
-        start_page, end_page = _parse_page_range(req.page_range, total_pages)
+        if file_type == ".pptx":
+            start_page, end_page = _parse_page_range(req.page_range, total_pages)
+            if not saved_path or not os.path.exists(saved_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Source presentation is no longer available. Please upload the file again.",
+                )
+
+            out_name = f"{Path(filename).stem}_pages_{start_page}-{end_page}.pdf"
+            output_path = _build_output_file_path(req.output_folder, out_name)
+            generated_path = Path(
+                convert_pptx_to_pdf(
+                    saved_path,
+                    str(output_path.parent),
+                    page_range=f"{start_page}-{end_page}",
+                    output_basename=output_path.stem,
+                )
+            )
+            if generated_path != output_path:
+                generated_path.replace(output_path)
+        else:
+            reader = PdfReader(pdf_path)
+            start_index, end_index = _resolve_pdf_page_range(req.page_range, reader)
+            out_name = f"{Path(filename).stem}_pages_{req.page_range.strip().replace(' ', '')}.pdf"
+            output_path = _build_output_file_path(req.output_folder, out_name)
+            writer = PdfWriter()
+            for i in range(start_index, end_index + 1):
+                writer.add_page(reader.pages[i])
+
+            with open(output_path, "wb") as f:
+                writer.write(f)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    out_name = f"{Path(filename).stem}_pages_{start_page}-{end_page}.pdf"
-    output_path = os.path.join(temp_dir, out_name) if temp_dir else out_name
-
-    try:
-        reader = PdfReader(pdf_path)
-        writer = PdfWriter()
-        for i in range(start_page - 1, end_page):
-            writer.add_page(reader.pages[i])
-
-        with open(output_path, "wb") as f:
-            writer.write(f)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract pages: {e}")
 
-    return FileResponse(
-        path=output_path,
-        media_type="application/pdf",
+    return SavedFileResponse(
+        ok=True,
+        output_path=str(output_path),
+        output_folder=str(output_path.parent),
         filename=out_name,
     )
 
 
-@app.post("/extract-pdf-text")
+@app.post("/extract-pdf-text", response_model=SavedFileResponse)
 async def extract_pdf_text(req: PdfTextRequest):
-    """Extract embedded (non-OCR) text from an uploaded PDF and return a TXT download."""
+    """Extract embedded (non-OCR) text from an uploaded PDF and save it as a TXT file."""
     job = jobs.get(req.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
     pdf_path = job.get("pdf_path")
-    temp_dir = job.get("temp_dir")
     filename = job.get("filename", "document")
 
     if not pdf_path or not os.path.exists(pdf_path):
@@ -782,7 +819,7 @@ async def extract_pdf_text(req: PdfTextRequest):
         )
 
     out_name = f"{Path(filename).stem}_text.txt"
-    output_path = os.path.join(temp_dir, out_name) if temp_dir else out_name
+    output_path = _build_output_file_path(req.output_folder, out_name)
 
     try:
         reader = PdfReader(pdf_path)
@@ -798,9 +835,10 @@ async def extract_pdf_text(req: PdfTextRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract PDF text: {e}")
 
-    return FileResponse(
-        path=output_path,
-        media_type="text/plain; charset=utf-8",
+    return SavedFileResponse(
+        ok=True,
+        output_path=str(output_path),
+        output_folder=str(output_path.parent),
         filename=out_name,
     )
 

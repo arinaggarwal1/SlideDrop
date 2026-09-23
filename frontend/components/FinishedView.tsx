@@ -1,24 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, FolderOpen, RotateCcw } from "lucide-react";
+import { FileText, FolderOpen, RotateCcw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api";
 
 interface FinishedViewProps {
     outputFolder: string;
     extractionFile?: string;
+    onBuildExtractionPrompt: () => void;
     onConvertAnother: () => void;
 }
 
 export function FinishedView({
     outputFolder,
     extractionFile,
+    onBuildExtractionPrompt,
     onConvertAnother,
 }: FinishedViewProps) {
     const [isOpeningFolder, setIsOpeningFolder] = useState(false);
     const [openError, setOpenError] = useState("");
-    const folderDisplay = outputFolder.split("/").slice(-2).join("/");
+    const isWindowsPath = outputFolder.includes("\\");
+    const folderDisplay = outputFolder
+        .replace(/\\/g, "/")
+        .split("/")
+        .filter(Boolean)
+        .slice(-2)
+        .join("/");
 
     const handleOpenFolder = async () => {
         setIsOpeningFolder(true);
@@ -80,7 +88,7 @@ export function FinishedView({
                     <div className="w-full rounded-xl bg-muted/50 border border-border px-4 py-3">
                         <p className="text-xs text-muted-foreground mb-1">Saved to</p>
                         <p className="text-sm font-mono text-foreground truncate">
-                            ~/{folderDisplay}
+                            {isWindowsPath ? "…/" : "~/"}{folderDisplay}
                         </p>
                     </div>
 
@@ -113,6 +121,16 @@ export function FinishedView({
                         >
                             <FolderOpen className="h-4 w-4 mr-2" />
                             {isOpeningFolder ? "Opening Folder..." : "Open Folder"}
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            size="lg"
+                            className="w-full rounded-xl h-12 text-base font-medium cursor-pointer transition-all duration-300"
+                            onClick={onBuildExtractionPrompt}
+                        >
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Build Extraction Prompt
                         </Button>
 
                         <Button

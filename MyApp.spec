@@ -19,6 +19,7 @@ pypdf_datas, pypdf_binaries, pypdf_hiddenimports = collect_all("pypdf")
 
 hiddenimports = [
     "main",
+    "prompt_builder",
     "webview",
     "webview.platforms",
     "webview.platforms.cocoa",

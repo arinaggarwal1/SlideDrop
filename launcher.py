@@ -18,7 +18,18 @@ from pathlib import Path
 APP_NAME = os.environ.get("SLIDEDROP_APP_NAME", "SlideDrop")
 APP_MODE_ENV = "SLIDEDROP_APP_MODE"
 APP_HOST = "127.0.0.1"
-LOG_DIR = Path.home() / "Library" / "Logs" / APP_NAME
+
+
+def _get_log_dir() -> Path:
+    """Use the conventional per-user log directory on each desktop OS."""
+    if sys.platform == "win32":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        return base / APP_NAME / "Logs"
+    return Path.home() / "Library" / "Logs" / APP_NAME
+
+
+LOG_DIR = _get_log_dir()
 ERROR_LOG_PATH = LOG_DIR / "error.log"
 
 
@@ -122,14 +133,24 @@ def configure_runtime() -> None:
     if os.path.isdir(backend_path) and backend_path not in sys.path:
         sys.path.insert(0, backend_path)
 
-    preferred_path_entries = [
-        "/opt/homebrew/bin",
-        "/opt/homebrew/sbin",
-        "/opt/homebrew/opt/poppler/bin",
-        "/usr/local/bin",
-        "/usr/local/sbin",
-        "/usr/local/opt/poppler/bin",
-    ]
+    preferred_path_entries: list[str] = []
+    if sys.platform == "darwin":
+        preferred_path_entries = [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/opt/homebrew/opt/poppler/bin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            "/usr/local/opt/poppler/bin",
+        ]
+    elif sys.platform == "win32":
+        for environment_name in ("PROGRAMFILES", "PROGRAMFILES(X86)"):
+            base = os.environ.get(environment_name)
+            if base:
+                preferred_path_entries.append(str(Path(base) / "LibreOffice" / "program"))
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            preferred_path_entries.append(str(Path(local_app_data) / "Programs" / "Ollama"))
     current_path = os.environ.get("PATH", "")
     path_parts = [part for part in current_path.split(os.pathsep) if part]
     for entry in reversed(preferred_path_entries):

@@ -1,6 +1,6 @@
 # SlideDrop
 
-SlideDrop is a local macOS desktop app for two document workflows:
+SlideDrop is a local desktop app for macOS and Windows with two document workflows:
 
 - convert PowerPoint or PDF slide decks into high-resolution PNG images
 - merge multiple PDFs into one final PDF with page-range selection and manual ordering
@@ -38,12 +38,12 @@ This workflow is for assembling handouts, notes, readings, or combined packets.
 
 What it does:
 
-- opens a native macOS multi-file PDF picker
+- opens the native multi-file PDF picker on macOS or Windows
 - inspects each selected PDF and reads its page count
 - lets you drag files into the final merge order
 - lets you choose page selections per file with formats like `1-3,5,8-10`
 - saves the merged PDF to a custom folder or your Downloads folder
-- opens the merged file or reveals it in Finder
+- reveals the merged file in Finder or File Explorer
 
 Typical use cases:
 
@@ -58,21 +58,21 @@ The app is made of four parts:
 
 - Python 3.12 backend: FastAPI + uvicorn
 - Next.js frontend: exported static build served locally
-- pywebview shell: renders the desktop window on macOS
+- pywebview shell: renders the native desktop window on macOS and Windows
 - PyInstaller packaging: creates the `.app` bundle and DMG
 
 At runtime:
 
 1. `launcher.py` starts the FastAPI server in-process on a local port.
 2. The bundled frontend is served from the embedded backend.
-3. `pywebview` opens a native macOS window pointed at the local app URL.
+3. `pywebview` opens a native desktop window pointed at the local app URL.
 4. File conversion and PDF operations happen locally on the machine.
 
 No cloud upload is required for the core app workflows.
 
 ## Key Features
 
-- local-first desktop app for macOS
+- local-first desktop app for macOS and Windows
 - single-file slide conversion for `.pptx` and `.pdf`
 - dedicated PDF merge workspace
 - page-range extraction for PDFs
@@ -87,15 +87,17 @@ No cloud upload is required for the core app workflows.
 
 ### Runtime dependencies
 
-These tools are required on macOS for the app to work correctly.
+The packaged app includes its Python and frontend dependencies. PowerPoint conversion still requires LibreOffice, and optional local lecture extraction requires Ollama.
 
 | Dependency | Why it is needed | Install command |
 | --- | --- | --- |
-| Python 3.12+ | backend, build tooling | `brew install python@3.12` |
-| Node.js 20+ recommended | frontend build | `brew install node` |
-| LibreOffice | PowerPoint to PDF conversion | `brew install --cask libreoffice` |
-| Poppler | PDF page inspection and PNG rendering | `brew install poppler` |
-| create-dmg | DMG packaging | `brew install create-dmg` |
+| Dependency | macOS | Windows |
+| --- | --- | --- |
+| Python 3.12+ (builds only) | `brew install python@3.12` | Install from python.org |
+| Node.js 20+ (builds only) | `brew install node` | Install from nodejs.org |
+| LibreOffice | `brew install --cask libreoffice` | Install from libreoffice.org |
+| PDF renderer | `brew install poppler` | Included through PyMuPDF |
+| Packaging | `brew install create-dmg` | No additional tool |
 
 ### Python packages
 
@@ -173,17 +175,17 @@ cd frontend
 npm run dev
 ```
 
-## Desktop Build
+## Desktop Builds
 
-The project includes a build script that creates both:
+The same command builds the native package for the operating system it runs on:
 
-- `dist/SlideDrop.app`
-- `dist/SlideDrop.dmg`
+- macOS: `dist/SlideDrop.app` and `dist/SlideDrop.dmg`
+- Windows: `dist/SlideDrop/SlideDrop.exe` and `dist/SlideDrop-Windows.zip`
 
 Build command:
 
 ```bash
-python3 build.py --app-name SlideDrop --spec SlideDrop.spec
+python build.py
 ```
 
 What the build script does:
@@ -192,8 +194,10 @@ What the build script does:
 2. runs `npm ci`
 3. runs the production frontend build
 4. copies the static frontend export into `frontend_dist`
-5. runs PyInstaller with `SlideDrop.spec`
-6. creates a DMG using `create-dmg`
+5. selects `SlideDrop.spec` on macOS or `SlideDrop.windows.spec` on Windows
+6. creates a DMG on macOS or a portable ZIP containing the Windows app
+
+PyInstaller does not cross-compile. Build on the target operating system, or push to `master`/`main`: `.github/workflows/build-desktop.yml` builds both platforms in parallel and publishes both packages as workflow artifacts. The backend, frontend, launcher, and conversion logic remain shared, while native dialogs and file-manager actions live behind `backend/platform_services.py`.
 
 If you only want to rebuild the app bundle manually:
 
@@ -246,13 +250,13 @@ Current merge flow:
 
 1. open the PDF workspace from the home screen
 2. click `Choose PDFs`
-3. select one or more PDFs in the native macOS picker
+3. select one or more PDFs in the native system picker
 4. drag file cards into the order you want
 5. edit page ranges per file
 6. choose an output filename
 7. optionally choose a save folder
 8. click `Merge PDFs`
-9. open the merged file or reveal it in Finder
+9. reveal the merged file in Finder or File Explorer
 
 Page selection format:
 
@@ -278,7 +282,7 @@ Current conversion flow:
 4. optionally enable Ollama lecture-note extraction
 5. click `Convert Slides`
 6. watch live progress during rendering
-7. open the output folder in Finder from the completion screen
+7. open the output folder in the system file manager from the completion screen
 
 If the uploaded file is a PowerPoint:
 
@@ -311,7 +315,7 @@ The frontend talks to the local FastAPI backend.
 | `POST` | `/pdfs/inspect` | inspect selected PDFs and get page counts |
 | `POST` | `/merge-pdfs` | merge ordered PDF inputs with page ranges |
 | `POST` | `/dialog/select-folder` | open the native folder picker |
-| `POST` | `/open-location` | open a file or folder in Finder |
+| `POST` | `/open-location` | reveal a file or open a folder in the system file manager |
 
 ### Utility endpoints
 
@@ -327,6 +331,7 @@ SlideDrop/
 ├── README.md
 ├── .gitignore
 ├── SlideDrop.spec
+├── SlideDrop.windows.spec
 ├── MyApp.spec
 ├── launcher.py
 ├── build.py
@@ -335,6 +340,7 @@ SlideDrop/
 ├── resources/
 ├── backend/
 │   ├── main.py
+│   ├── platform_services.py
 │   ├── requirements.txt
 │   ├── converters/
 │   │   ├── pdf_to_images.py
@@ -367,6 +373,8 @@ Then check:
 - missing `frontend_dist` assets
 - incorrect path handling in bundled mode
 - backend startup errors in `launcher.py`
+
+On Windows, logs are stored under `%LOCALAPPDATA%\SlideDrop\Logs\error.log`. On macOS, they remain under `~/Library/Logs/SlideDrop/error.log`.
 
 ### Poppler appears installed but the app says it is missing
 
@@ -433,11 +441,12 @@ Core conversion and merge workflows do not require uploading documents to a remo
 
 When changing desktop packaging behavior, pay special attention to:
 
-- hidden imports in `SlideDrop.spec`
+- hidden imports in both platform spec files
 - path resolution through `_MEIPASS`
 - `frontend_dist` inclusion
-- native macOS picker behavior via `osascript`
-- Homebrew binary visibility in bundled mode
+- native operation boundaries in `backend/platform_services.py`
+- Homebrew path visibility on macOS and Program Files discovery on Windows
+- the two-platform workflow in `.github/workflows/build-desktop.yml`
 
 ## License
 

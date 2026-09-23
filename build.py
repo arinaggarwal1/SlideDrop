@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""
-Reproducible macOS desktop build pipeline.
+"""Reproducible native build pipeline for macOS and Windows.
 
-Run:
-    python build.py
-
-Outputs:
-    dist/MyApp.app
-    dist/MyApp.dmg
+Run this file on the target OS. PyInstaller intentionally creates native
+artifacts, so CI runs the same script once on macOS and once on Windows.
 """
 
 from __future__ import annotations
@@ -17,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -59,10 +55,11 @@ def clean(paths: list[Path]):
 
 
 def build_frontend(frontend_dir: Path):
-    require_command("npm", "Install Node.js: brew install node")
+    require_command("npm", "Install Node.js 20 or newer.")
+    npm_command = shutil.which("npm") or "npm"
     env = {**os.environ, "SLIDEDROP_DESKTOP_BUILD": "1"}
-    run(["npm", "ci"], cwd=frontend_dir, env=env)
-    run(["npm", "run", "build"], cwd=frontend_dir, env=env)
+    run([npm_command, "ci"], cwd=frontend_dir, env=env)
+    run([npm_command, "run", "build"], cwd=frontend_dir, env=env)
 
 
 def copy_frontend_dist(frontend_out: Path, frontend_dist: Path):
@@ -143,10 +140,31 @@ def create_dmg(app_name: str, dist_dir: Path):
     shutil.rmtree(staging_dir, ignore_errors=True)
 
 
+def create_windows_archive(app_name: str, dist_dir: Path) -> Path:
+    """Package the PyInstaller folder as a portable Windows distribution."""
+    app_dir = dist_dir / app_name
+    exe_path = app_dir / f"{app_name}.exe"
+    archive_path = dist_dir / f"{app_name}-Windows.zip"
+    if not exe_path.exists():
+        raise RuntimeError(f"Expected Windows executable at {exe_path}")
+
+    if archive_path.exists():
+        archive_path.unlink()
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for source in app_dir.rglob("*"):
+            if source.is_file():
+                archive.write(source, Path(app_name) / source.relative_to(app_dir))
+    return archive_path
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build macOS app + DMG for this project.")
-    parser.add_argument("--app-name", default="MyApp", help="Output app name (default: MyApp)")
-    parser.add_argument("--spec", default="MyApp.spec", help="PyInstaller spec file (default: MyApp.spec)")
+    parser = argparse.ArgumentParser(description="Build SlideDrop for the current desktop OS.")
+    parser.add_argument("--app-name", default="SlideDrop", help="Output app name")
+    parser.add_argument(
+        "--spec",
+        default=None,
+        help="Optional PyInstaller spec override; normally selected automatically.",
+    )
     return parser.parse_args()
 
 
@@ -159,13 +177,22 @@ def main():
     frontend_dist = root_dir / "frontend_dist"
     dist_dir = root_dir / "dist"
     build_dir = root_dir / "build"
-    spec_file = root_dir / args.spec
+    if sys.platform == "darwin":
+        platform_name = "macOS"
+        default_spec = "SlideDrop.spec"
+    elif sys.platform == "win32":
+        platform_name = "Windows"
+        default_spec = "SlideDrop.windows.spec"
+    else:
+        raise RuntimeError("Desktop builds are supported on macOS and Windows only.")
+
+    spec_file = root_dir / (args.spec or default_spec)
 
     if not spec_file.exists():
         raise RuntimeError(f"Spec file not found: {spec_file}")
 
     print("=" * 56)
-    print(f"Building desktop app: {args.app_name}")
+    print(f"Building {args.app_name} for {platform_name}")
     print("=" * 56)
 
     clean([dist_dir, build_dir, frontend_dist])
@@ -173,15 +200,16 @@ def main():
     frontend_dist.mkdir(parents=True, exist_ok=True)
     copy_frontend_dist(frontend_out, frontend_dist)
     build_app(root_dir, spec_file)
-    create_dmg(args.app_name, dist_dir)
-
-    app_output = dist_dir / f"{args.app_name}.app"
-    dmg_output = dist_dir / f"{args.app_name}.dmg"
+    if sys.platform == "darwin":
+        create_dmg(args.app_name, dist_dir)
+        outputs = [dist_dir / f"{args.app_name}.app", dist_dir / f"{args.app_name}.dmg"]
+    else:
+        outputs = [dist_dir / args.app_name, create_windows_archive(args.app_name, dist_dir)]
 
     print()
     print("Build complete")
-    print(f"App: {app_output}")
-    print(f"DMG: {dmg_output}")
+    for output in outputs:
+        print(f"Output: {output}")
 
 
 if __name__ == "__main__":
