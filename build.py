@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None):
-    print(f"→ {' '.join(cmd)}")
+    print(f"> {' '.join(cmd)}")
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, check=True)
 
 
@@ -47,7 +47,7 @@ def require_pywebview():
 def clean(paths: list[Path]):
     for path in paths:
         if path.exists():
-            print(f"• Removing {path}")
+            print(f"- Removing {path}")
             if path.is_dir():
                 shutil.rmtree(path)
             else:
