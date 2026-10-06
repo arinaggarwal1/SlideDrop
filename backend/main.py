@@ -98,7 +98,7 @@ _FRONTEND_DIR = _resolve_frontend_dir()
 # App setup
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="SlideDrop API", version="1.0.0")
+app = FastAPI(title="SlideDrop API", version="1.0.1")
 
 app.add_middleware(
     CORSMiddleware,

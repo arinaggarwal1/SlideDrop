@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
-import { FileImage, FileStack, FileText, Layers } from "lucide-react";
+import Image from "next/image";
+import { FileImage, FileStack, FileText } from "lucide-react";
 
 import { ExtractionEnginePanel } from "@/components/ExtractionEnginePanel";
 import { FinishedView } from "@/components/FinishedView";
@@ -139,8 +140,15 @@ export default function Home() {
       <header className="border-b border-border/50 px-6 py-4">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary p-2 text-primary-foreground">
-              <Layers className="h-4 w-4" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted">
+              <Image
+                src="/icon.png"
+                alt=""
+                width={36}
+                height={36}
+                className="h-9 w-9"
+                priority
+              />
             </div>
             <div>
               <span className="block text-lg font-semibold tracking-tight text-foreground">

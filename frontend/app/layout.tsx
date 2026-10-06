@@ -17,6 +17,10 @@ export const metadata: Metadata = {
   title: "SlideDrop — Convert Slides to Images",
   description:
     "Upload a PowerPoint or PDF file and export every slide as a high-quality PNG image.",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
