@@ -68,9 +68,9 @@ export function AppUpdateControl() {
 
   const locked = busy || update?.status === "checking" || polling || update?.status === "installing";
   return (
-    <section aria-label="App updates" className="mx-auto mt-8 max-w-2xl rounded-xl border border-border bg-card/60 px-4 py-3">
+    <section aria-label="App updates" className="home-updates">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">SlideDrop{update ? ` v${update.current_version}` : ""}</p>
+        <p className="text-xs text-muted-foreground">{update ? `v${update.current_version}` : "SlideDrop"}</p>
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" disabled={locked || update?.status === "ready"} onClick={() => act("check")}>
             <RefreshCw className={`h-4 w-4 ${busy || update?.status === "checking" ? "animate-spin motion-reduce:animate-none" : ""}`} />

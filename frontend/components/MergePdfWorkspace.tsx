@@ -18,13 +18,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api";
 import { PdfPageCanvas, type PdfPageTile } from "@/components/PdfPageCanvas";
+import { movedPages } from "@/lib/pageOrder";
 
 interface MergePdfWorkspaceProps {
   onBack: () => void;
 }
 
 interface MergePdfFile {
-  sourceNumber: number;
   path: string;
   filename: string;
   pageCount: number;
@@ -91,6 +91,11 @@ function buildDefaultOutputName(filename: string): string {
 export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
   const [files, setFiles] = useState<MergePdfFile[]>([]);
   const [pageOrder, setPageOrder] = useState<string[]>([]);
+  const [explicitlyMoved, setExplicitlyMoved] = useState<Set<string>>(() => new Set());
+  const resetPageOrder = useCallback(() => {
+    setPageOrder([]);
+    setExplicitlyMoved(new Set());
+  }, []);
   const [outputFolder, setOutputFolder] = useState("");
   const [outputName, setOutputName] = useState("");
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
@@ -105,8 +110,9 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
 
   const fileSummaries = useMemo(
     () =>
-      files.map((file) => ({
+      files.map((file, index) => ({
         ...file,
+        sourceNumber: index + 1,
         parsed: parsePageRange(file.pageRange, file.pageCount),
       })),
     [files]
@@ -118,7 +124,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
   );
   const hasInvalidRanges = fileSummaries.some((file) => Boolean(file.parsed.error));
 
-  const pages = useMemo(() => {
+  const defaultPages = useMemo(() => {
     const selected: PdfPageTile[] = [];
     for (const file of fileSummaries) {
       if (file.parsed.error || file.pageCount === 0) continue;
@@ -134,14 +140,30 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
         }
       }
     }
-    const byId = new Map(selected.map(page => [page.id, page]));
+    return selected;
+  }, [fileSummaries]);
+
+  const pages = useMemo(() => {
+    const byId = new Map(defaultPages.map(page => [page.id, page]));
     const ordered: PdfPageTile[] = [];
     for (const id of pageOrder) {
       const page = byId.get(id);
       if (page) { ordered.push(page); byId.delete(id); }
     }
     return [...ordered, ...byId.values()];
-  }, [fileSummaries, pageOrder]);
+  }, [defaultPages, pageOrder]);
+
+  const markedPages = useMemo(() => movedPages(
+    defaultPages.map(page => page.id), pages.map(page => page.id), explicitlyMoved,
+  ), [defaultPages, pages, explicitlyMoved]);
+
+  const handleReorderPages = useCallback((ids: string[], movedId: string) => {
+    if (isMerging || hasInvalidRanges) return;
+    setPageOrder(ids);
+    setExplicitlyMoved(movedPages(
+      defaultPages.map(page => page.id), ids, new Set([...markedPages, movedId]),
+    ));
+  }, [defaultPages, markedPages, isMerging, hasInvalidRanges]);
 
   const inspectPaths = useCallback(async (paths: string[]) => {
     const res = await fetch(apiUrl("/pdfs/inspect"), {
@@ -163,14 +185,13 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
         pageCount: file.page_count,
         pageRange: defaultRange(file.page_count),
       })
-    ) as Omit<MergePdfFile, "sourceNumber">[];
+    ) as MergePdfFile[];
 
     setFiles((current) => {
       const existing = new Map(current.map((file) => [file.path, file]));
-      let sourceNumber = Math.max(0, ...current.map(file => file.sourceNumber));
       for (const file of nextFiles) {
         if (!existing.has(file.path)) {
-          existing.set(file.path, { ...file, sourceNumber: ++sourceNumber });
+          existing.set(file.path, file);
         }
       }
       return Array.from(existing.values());
@@ -267,7 +288,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
     if (from < 0 || target < 0) return;
     const destination = after === undefined ? target : target + Number(after) - Number(from < target);
     if (from === destination) return;
-    setPageOrder([]);
+    resetPageOrder();
     setFileAnnouncement(`${files[from].filename} moved to position ${destination + 1} of ${files.length}.`);
     setFiles((current) => {
       const fromIndex = current.findIndex((file) => file.path === fromPath);
@@ -281,7 +302,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
       next.splice(destination, 0, moved);
       return next;
     });
-  }, [files, isMerging]);
+  }, [files, isMerging, resetPageOrder]);
 
   const handleMerge = useCallback(async () => {
     if (files.length === 0) {
@@ -333,12 +354,12 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
 
   const handleReset = useCallback(() => {
     setFiles([]);
-    setPageOrder([]);
+    resetPageOrder();
     setOutputFolder("");
     setOutputName("");
     setSuccess(null);
     setError("");
-  }, []);
+  }, [resetPageOrder]);
 
   if (success) {
     return (
@@ -649,9 +670,9 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
       </div>
       {files.length > 0 && (
         <>
-          <p className="mt-5 text-sm text-muted-foreground">Source numbers stay with each PDF. Changing ranges preserves the order of arranged pages. New PDFs are added at the end. Reset order restores the PDF list order.</p>
+          <p className="mt-5 text-sm text-muted-foreground">PDF numbers follow the file list above. Reordering PDFs renumbers their badges, restores pages to the new file order, and clears moved-page highlights. Your page selections are kept.</p>
           {hasInvalidRanges && <p role="alert" className="mt-2 text-sm text-destructive">Fix the page ranges above to see all selected pages and merge.</p>}
-          <PdfPageCanvas pages={pages} onReorder={setPageOrder} onReset={() => setPageOrder([])} disabled={isMerging || hasInvalidRanges} />
+          <PdfPageCanvas pages={pages} movedIds={markedPages} onReorder={handleReorderPages} onReset={resetPageOrder} disabled={isMerging || hasInvalidRanges} />
         </>
       )}
     </div>

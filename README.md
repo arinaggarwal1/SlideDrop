@@ -42,7 +42,7 @@ What it does:
 - inspects each selected PDF and reads its page count
 - uses compact PDF rows with drag grips, insertion markers, and up/down arrows
 - lets you choose page selections per file with formats like `1-3,5,8-10`
-- previews selected pages in a grid with stable source badges such as `PDF 1`
+- previews selected pages in a grid with source badges such as `PDF 1`, numbered by the current file order
 - rearranges individual pages across PDFs using drag-and-drop or arrow controls
 - adjusts preview size from small tiles to large pages with a slider and +/− buttons
 - loads and caches lightweight thumbnails on demand
@@ -58,8 +58,17 @@ Typical use cases:
 
 The page grid shows the final export order. Reordering entire PDFs resets custom
 page arrangements and groups pages by the new file order. **Reset order** in the
-page grid also restores the PDF list order. Source numbers stay attached to their
-PDFs when either files or pages move.
+page grid also restores the PDF list order. Source numbers follow the current file
+list: the first file is PDF 1, the second is PDF 2, and so on. Moving a whole PDF
+renumbers its badges and resets the page arrangement and moved-page highlights,
+while keeping the selected page ranges.
+
+Only individually moved pages get a subtle red outline and a **Moved** label.
+Pages displaced to make room remain unmarked. Returning a page to its default
+relative order clears its highlight.
+
+The home screen fits all three tools in a compact desktop layout, switches to
+list-style cards on narrower screens, and keeps the update control visible.
 
 ## Architecture
 

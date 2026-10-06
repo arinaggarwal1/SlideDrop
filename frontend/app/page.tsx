@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import Image from "next/image";
-import { FileImage, FileStack, FileText } from "lucide-react";
+import { ArrowUpRight, FileImage, FileStack, FileText, ShieldCheck } from "lucide-react";
 
 import { ExtractionEnginePanel } from "@/components/ExtractionEnginePanel";
 import { FinishedView } from "@/components/FinishedView";
@@ -39,34 +39,31 @@ function ToolCard({
   description,
   actionLabel,
   icon,
+  kind,
+  format,
   onClick,
 }: {
   title: string;
   description: string;
   actionLabel: string;
   icon: ReactNode;
+  kind: "convert" | "merge" | "extract";
+  format: string;
   onClick: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,251,255,0.94))] p-6 shadow-sm transition-colors duration-200 hover:border-primary/30 dark:bg-[linear-gradient(180deg,rgba(29,33,46,0.98),rgba(24,28,40,0.94))]">
-      <div className="flex h-full flex-col">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
-          </div>
-          <div className="rounded-xl bg-muted p-3 text-primary">{icon}</div>
-        </div>
-
-        <p className="mt-3 flex-1 text-sm leading-6 text-muted-foreground">{description}</p>
-
-        <Button
-          className="mt-5 h-10 rounded-xl cursor-pointer justify-start px-4"
-          onClick={onClick}
-        >
-          {actionLabel}
-        </Button>
-      </div>
-    </div>
+    <button type="button" className="home-tool" data-tool={kind} onClick={onClick} aria-label={actionLabel}>
+      <span className="home-tool-art" aria-hidden="true">
+        <span className="home-paper home-paper-back" />
+        <span className="home-paper home-paper-front">{icon}<span className="home-paper-line" /><span className="home-paper-line short" /></span>
+        <span className="home-tool-format">{format}</span>
+      </span>
+      <span className="home-tool-copy">
+        <span role="heading" aria-level={2} className="home-tool-title">{title}</span>
+        <span className="home-tool-description">{description}</span>
+      </span>
+      <span className="home-tool-action">{actionLabel}<ArrowUpRight aria-hidden="true" className="h-4 w-4" /></span>
+    </button>
   );
 }
 
@@ -137,8 +134,8 @@ export default function Home() {
       : "max-w-2xl";
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(250,251,255,1),rgba(245,247,250,1))] dark:bg-[linear-gradient(180deg,rgba(15,18,27,1),rgba(12,15,22,1))]">
-      <header className="border-b border-border/50 px-6 py-4">
+    <div className={`${appState === "home" ? "home-shell" : "min-h-screen"} bg-[linear-gradient(180deg,rgba(250,251,255,1),rgba(245,247,250,1))] dark:bg-[linear-gradient(180deg,rgba(15,18,27,1),rgba(12,15,22,1))]`}>
+      <header className={appState === "home" ? "home-header" : "border-b border-border/50 px-6 py-4"}>
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted">
@@ -156,7 +153,7 @@ export default function Home() {
                 SlideDrop
               </span>
               <span className="text-xs text-muted-foreground">
-                Slide conversion and PDF assembly, fully local.
+                {appState === "home" ? "Your document workspace" : "Slide conversion and PDF assembly, fully local."}
               </span>
             </div>
           </div>
@@ -164,46 +161,55 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="px-6 py-12">
+      <main className={appState === "home" ? "home-main" : "px-6 py-12"}>
         <div className={`mx-auto w-full ${containerClass}`}>
           {appState === "home" && (
-            <div className="animate-fade-in-up">
-              <div className="mx-auto max-w-3xl text-center">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                  Choose what you want to do
+            <div className="home-content">
+              <div className="home-intro">
+                <p className="home-eyebrow">YOUR EVERYDAY TOOLKIT</p>
+                <h1>
+                  Your documents. <span>In good order.</span>
                 </h1>
-                <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                  Use the converter for a single slide deck, or open the PDF workspace to combine files, reorder them, and choose which pages to keep.
+                <p className="home-subtitle">
+                  Turn slides into images, put PDFs in order, and prepare your next extraction.
                 </p>
               </div>
 
-              <div className="mt-8 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              <div className="home-tools">
                 <ToolCard
                   title="Slides to Images"
-                  description="Upload one PowerPoint or PDF and export each slide as a PNG. You can also save to a custom folder or extract text locally."
+                  description="Turn your slide deck into crisp, ready-to-use images."
                   actionLabel="Open Converter"
+                  kind="convert"
+                  format="PPTX / PDF → PNG"
                   icon={<FileImage className="h-6 w-6" />}
                   onClick={handleSelectConvert}
                 />
                 <ToolCard
                   title="PDF Workspace"
-                  description="Choose PDFs, preview and rearrange individual pages, adjust the preview size, and save everything as one merged file."
-                  actionLabel="Open Merge Workspace"
+                  description="Bring files together. Arrange every page just how you want it."
+                  actionLabel="Open PDF Workspace"
+                  kind="merge"
+                  format="MERGE / REORDER"
                   icon={<FileStack className="h-6 w-6" />}
                   onClick={handleSelectMerge}
                 />
                 <ToolCard
                   title="Extraction Engine"
-                  description="Start from the exact lecture prompt you already use, then generate a domain-adapted version locally with Ollama without changing the rest of your workflow."
+                  description="Shape your extraction prompt around the subject at hand."
                   actionLabel="Open Extraction Engine"
+                  kind="extract"
+                  format="PROMPT / REFINE"
                   icon={<FileText className="h-6 w-6" />}
                   onClick={() => handleSelectPromptBuilder()}
                 />
               </div>
+              <footer className="home-footer">
+                <span className="home-privacy"><ShieldCheck aria-hidden="true" className="h-4 w-4" />Your documents stay on your device.</span>
+                <AppUpdateControl />
+              </footer>
             </div>
           )}
-
-          {appState === "home" && <AppUpdateControl />}
 
           {appState === "convert" && (
             <div className="animate-fade-in-up">
@@ -303,11 +309,11 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="border-t border-border/50 px-6 py-4 text-center">
+      {appState !== "home" && <footer className="border-t border-border/50 px-6 py-4 text-center">
         <p className="text-xs text-muted-foreground">
           SlideDrop keeps conversion and PDF merge workflows local to your machine.
         </p>
-      </footer>
+      </footer>}
     </div>
   );
 }
