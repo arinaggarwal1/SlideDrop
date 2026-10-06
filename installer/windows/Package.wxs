@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="SlideDrop"
+    Manufacturer="SlideDrop"
+    Version="$(ProductVersion)"
+    UpgradeCode="87578EBC-6F8D-4F68-BC73-38BA48F7AB68"
+    Scope="perMachine"
+    InstallerVersion="500"
+    Compressed="yes">
+
+    <SummaryInformation Description="SlideDrop desktop application" />
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of SlideDrop is already installed."
+      Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="SlideDropIcon" SourceFile="$(IconSource)" />
+    <Property Id="ARPPRODUCTICON" Value="SlideDropIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/arinaggarwal1/SlideDrop" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="SlideDrop" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="SlideDrop" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Component
+      Id="MainExecutableComponent"
+      Directory="INSTALLFOLDER"
+      Guid="4E56B099-115C-46AD-8528-A4300A665574">
+      <File
+        Id="MainExecutable"
+        Source="$(AppSource)\SlideDrop.exe"
+        KeyPath="yes">
+        <Shortcut
+          Id="StartMenuShortcut"
+          Directory="ApplicationProgramsFolder"
+          Name="SlideDrop"
+          Description="Slide conversion and PDF assembly"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="SlideDropIcon" />
+        <Shortcut
+          Id="DesktopShortcut"
+          Directory="DesktopFolder"
+          Name="SlideDrop"
+          Description="Slide conversion and PDF assembly"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="SlideDropIcon" />
+      </File>
+      <RemoveFolder
+        Id="RemoveApplicationProgramsFolder"
+        Directory="ApplicationProgramsFolder"
+        On="uninstall" />
+    </Component>
+
+    <Files Include="$(AppSource)\**">
+      <Exclude Files="$(AppSource)\SlideDrop.exe" />
+    </Files>
+  </Package>
+</Wix>

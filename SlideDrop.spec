@@ -121,8 +121,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "SlideDrop",
         "CFBundleDisplayName": "SlideDrop",
-        "CFBundleVersion": "1.0.1",
-        "CFBundleShortVersionString": "1.0.1",
+        "CFBundleVersion": "1.1.0",
+        "CFBundleShortVersionString": "1.1.0",
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "12.0",
     },

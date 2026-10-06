@@ -15,6 +15,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+APP_VERSION = "1.1.0"
+
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None):
     print(f"> {' '.join(cmd)}")
@@ -157,6 +159,46 @@ def create_windows_archive(app_name: str, dist_dir: Path) -> Path:
     return archive_path
 
 
+def create_windows_installer(
+    app_name: str,
+    root_dir: Path,
+    dist_dir: Path,
+) -> Path:
+    """Build a machine-wide x64 MSI installer using WiX Toolset."""
+    require_command("dotnet", "Install the .NET 8 SDK or newer.")
+
+    app_dir = dist_dir / app_name
+    executable = app_dir / f"{app_name}.exe"
+    installer_project = root_dir / "installer" / "windows" / "SlideDrop.Installer.wixproj"
+    icon_path = root_dir / "resources" / "app.ico"
+    installer_path = dist_dir / f"{app_name}-Setup.msi"
+
+    if not executable.exists():
+        raise RuntimeError(f"Expected Windows executable at {executable}")
+    if not installer_project.exists():
+        raise RuntimeError(f"WiX installer project not found at {installer_project}")
+    if not icon_path.exists():
+        raise RuntimeError(f"Windows icon not found at {icon_path}")
+
+    run(
+        [
+            "dotnet",
+            "build",
+            str(installer_project),
+            "--configuration",
+            "Release",
+            f"--property:AppSource={app_dir}",
+            f"--property:ProductVersion={APP_VERSION}",
+            f"--property:IconSource={icon_path}",
+        ],
+        cwd=root_dir,
+    )
+
+    if not installer_path.exists():
+        raise RuntimeError(f"Expected Windows installer at {installer_path}")
+    return installer_path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build SlideDrop for the current desktop OS.")
     parser.add_argument("--app-name", default="SlideDrop", help="Output app name")
@@ -204,7 +246,11 @@ def main():
         create_dmg(args.app_name, dist_dir)
         outputs = [dist_dir / f"{args.app_name}.app", dist_dir / f"{args.app_name}.dmg"]
     else:
-        outputs = [dist_dir / args.app_name, create_windows_archive(args.app_name, dist_dir)]
+        outputs = [
+            dist_dir / args.app_name,
+            create_windows_archive(args.app_name, dist_dir),
+            create_windows_installer(args.app_name, root_dir, dist_dir),
+        ]
 
     print()
     print("Build complete")

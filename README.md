@@ -89,15 +89,14 @@ No cloud upload is required for the core app workflows.
 
 The packaged app includes its Python and frontend dependencies. PowerPoint conversion still requires LibreOffice, and optional local lecture extraction requires Ollama.
 
-| Dependency | Why it is needed | Install command |
-| --- | --- | --- |
 | Dependency | macOS | Windows |
 | --- | --- | --- |
 | Python 3.12+ (builds only) | `brew install python@3.12` | Install from python.org |
 | Node.js 20+ (builds only) | `brew install node` | Install from nodejs.org |
+| .NET 8 SDK+ (MSI builds only) | Not required | Install from dotnet.microsoft.com |
 | LibreOffice | `brew install --cask libreoffice` | Install from libreoffice.org |
 | PDF renderer | `brew install poppler` | Included through PyMuPDF |
-| Packaging | `brew install create-dmg` | No additional tool |
+| Packaging | `brew install create-dmg` | WiX is restored automatically |
 
 ### Python packages
 
@@ -180,7 +179,7 @@ npm run dev
 The same command builds the native package for the operating system it runs on:
 
 - macOS: `dist/SlideDrop.app` and `dist/SlideDrop.dmg`
-- Windows: `dist/SlideDrop/SlideDrop.exe` and `dist/SlideDrop-Windows.zip`
+- Windows: `dist/SlideDrop/SlideDrop.exe`, `dist/SlideDrop-Windows.zip`, and `dist/SlideDrop-Setup.msi`
 
 Build command:
 
@@ -195,7 +194,9 @@ What the build script does:
 3. runs the production frontend build
 4. copies the static frontend export into `frontend_dist`
 5. selects `SlideDrop.spec` on macOS or `SlideDrop.windows.spec` on Windows
-6. creates a DMG on macOS or a portable ZIP containing the Windows app
+6. creates a DMG on macOS or both a portable ZIP and a machine-wide MSI installer on Windows
+
+The Windows MSI installs the x64 app to `C:\Program Files\SlideDrop`, adds Start Menu and desktop shortcuts, registers SlideDrop in Installed Apps, and supports clean upgrades and uninstall. Building the MSI requires the .NET 8 SDK or newer; the pinned WiX SDK is restored automatically.
 
 PyInstaller does not cross-compile. Build on the target operating system, or push to `master`/`main`: `.github/workflows/build-desktop.yml` builds both platforms in parallel and publishes both packages as workflow artifacts. The backend, frontend, launcher, and conversion logic remain shared, while native dialogs and file-manager actions live behind `backend/platform_services.py`.
 

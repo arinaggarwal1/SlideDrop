@@ -1,0 +1,9 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <OutputName>SlideDrop-Setup</OutputName>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\dist\</OutputPath>
+    <IntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\build\installer\</IntermediateOutputPath>
+    <DefineConstants>AppSource=$(AppSource);ProductVersion=$(ProductVersion);IconSource=$(IconSource)</DefineConstants>
+  </PropertyGroup>
+</Project>
