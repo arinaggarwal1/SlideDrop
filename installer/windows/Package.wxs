@@ -23,10 +23,10 @@
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="SlideDrop" />
     </StandardDirectory>
-    <StandardDirectory Id="CommonProgramsFolder">
+    <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ApplicationProgramsFolder" Name="SlideDrop" />
     </StandardDirectory>
-    <StandardDirectory Id="CommonDesktopFolder" />
+    <StandardDirectory Id="DesktopFolder" />
 
     <Component
       Id="MainExecutableComponent"
@@ -46,7 +46,7 @@
           Advertise="yes" />
         <Shortcut
           Id="DesktopShortcut"
-          Directory="CommonDesktopFolder"
+          Directory="DesktopFolder"
           Name="SlideDrop"
           Description="Slide conversion and PDF assembly"
           WorkingDirectory="INSTALLFOLDER"
