@@ -210,7 +210,6 @@
 .home-paper-front svg { width: 19px; height: 19px; stroke-width: 1.5; }
 .home-paper-line { display: block; height: 2px; border-radius: 1px; background: currentColor; opacity: .3; }
 .home-paper-line.short { width: 65%; }
-.home-tool-format { position: absolute; bottom: 17px; right: 13px; font-family: var(--font-geist-mono), monospace; font-size: 8px; letter-spacing: .025em; }
 .home-tool-copy { display: flex; flex: 1; flex-direction: column; }
 .home-tool-title { font-weight: 600; font-size: 17px; line-height: 1.3; letter-spacing: -.025em; }
 .home-tool-description { display: block; margin-top: 9px; color: var(--muted-foreground); font-size: 13px; line-height: 1.65; }
@@ -226,7 +225,6 @@
 @media (max-width: 900px) {
   .home-tool { padding: 17px; }
   .home-tools { gap: 12px; }
-  .home-tool-format { font-size: 7px; right: 8px; }
   .home-paper { left: 13px; }
 }
 @media (max-height: 640px) and (min-width: 760px) {
@@ -245,7 +243,6 @@
   .home-tool-art { grid-row: 1 / 3; height: 76px; margin: 0; }
   .home-paper { width: 34px; height: 46px; left: 10px; }
   .home-paper-front { padding: 5px; }
-  .home-tool-format { display: none; }
   .home-tool-title { font-size: 16px; }
   .home-tool-description { margin-top: 5px; font-size: 12px; }
   .home-tool-action { grid-column: 2; margin-top: 12px; padding-top: 0; border: 0; font-size: 11px; }

@@ -40,7 +40,6 @@ function ToolCard({
   actionLabel,
   icon,
   kind,
-  format,
   onClick,
 }: {
   title: string;
@@ -48,7 +47,6 @@ function ToolCard({
   actionLabel: string;
   icon: ReactNode;
   kind: "convert" | "merge" | "extract";
-  format: string;
   onClick: () => void;
 }) {
   return (
@@ -56,7 +54,6 @@ function ToolCard({
       <span className="home-tool-art" aria-hidden="true">
         <span className="home-paper home-paper-back" />
         <span className="home-paper home-paper-front">{icon}<span className="home-paper-line" /><span className="home-paper-line short" /></span>
-        <span className="home-tool-format">{format}</span>
       </span>
       <span className="home-tool-copy">
         <span role="heading" aria-level={2} className="home-tool-title">{title}</span>
@@ -181,7 +178,6 @@ export default function Home() {
                   description="Turn your slide deck into crisp, ready-to-use images."
                   actionLabel="Open Converter"
                   kind="convert"
-                  format="PPTX / PDF → PNG"
                   icon={<FileImage className="h-6 w-6" />}
                   onClick={handleSelectConvert}
                 />
@@ -190,7 +186,6 @@ export default function Home() {
                   description="Bring files together. Arrange every page just how you want it."
                   actionLabel="Open PDF Workspace"
                   kind="merge"
-                  format="MERGE / REORDER"
                   icon={<FileStack className="h-6 w-6" />}
                   onClick={handleSelectMerge}
                 />
@@ -199,7 +194,6 @@ export default function Home() {
                   description="Shape your extraction prompt around the subject at hand."
                   actionLabel="Open Extraction Engine"
                   kind="extract"
-                  format="PROMPT / REFINE"
                   icon={<FileText className="h-6 w-6" />}
                   onClick={() => handleSelectPromptBuilder()}
                 />
