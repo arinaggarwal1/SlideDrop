@@ -40,8 +40,12 @@ What it does:
 
 - opens the native multi-file PDF picker on macOS or Windows
 - inspects each selected PDF and reads its page count
-- lets you drag files into the final merge order
+- uses compact PDF rows with drag grips, insertion markers, and up/down arrows
 - lets you choose page selections per file with formats like `1-3,5,8-10`
+- previews selected pages in a grid with stable source badges such as `PDF 1`
+- rearranges individual pages across PDFs using drag-and-drop or arrow controls
+- adjusts preview size from small tiles to large pages with a slider and +/− buttons
+- loads and caches lightweight thumbnails on demand
 - saves the merged PDF to a custom folder or your Downloads folder
 - reveals the merged file in Finder or File Explorer
 
@@ -51,6 +55,11 @@ Typical use cases:
 - pull only certain pages from larger PDFs
 - reorder packets before sharing or printing
 - merge scans, notes, and exported slides into one document
+
+The page grid shows the final export order. Reordering entire PDFs resets custom
+page arrangements and groups pages by the new file order. **Reset order** in the
+page grid also restores the PDF list order. Source numbers stay attached to their
+PDFs when either files or pages move.
 
 ## Architecture
 
@@ -75,6 +84,8 @@ No cloud upload is required for the core app workflows.
 - local-first desktop app for macOS and Windows
 - single-file slide conversion for `.pptx` and `.pdf`
 - dedicated PDF merge workspace
+- page previews, individual page reordering, and adjustable thumbnail sizes
+- in-app GitHub release checks and verified update installation
 - page-range extraction for PDFs
 - embedded text extraction from PDFs
 - optional Ollama-based lecture-note extraction
@@ -82,6 +93,31 @@ No cloud upload is required for the core app workflows.
 - native file picker for multi-PDF merge selection
 - packaged `.app` bundle and `.dmg` output
 - works in development mode and bundled mode
+
+## In-app updates
+
+The home screen's **Check for update** checks the latest stable GitHub Release in
+`arinaggarwal1/SlideDrop`. A newer release offers **Download**, then **Install and
+restart**. Downloads are checked against GitHub's SHA-256 asset digest before any
+installer runs. The app never updates from an unbuilt source branch.
+
+On macOS, run the packaged app from a writable Applications folder, not the DMG.
+The updater checks the bundle version and CPU architecture, stages the replacement,
+closes SlideDrop, and reopens the new app. The previous bundle is retained in a
+hidden `.slidedrop-update-*` folder beside the app for recovery. On Windows, the
+MSI upgrades the installed app and may show the standard Windows permission prompt.
+Save any work before choosing **Install and restart**.
+
+Development runs can check releases but cannot replace the running source checkout.
+The first build containing the updater must be installed normally; subsequent
+published versions can be installed through the app.
+
+For each release, update `backend/app_version.py`, build on each target OS with
+`python build.py`, and publish a matching `vX.Y.Z` GitHub Release with
+`SlideDrop.dmg` and `SlideDrop-Setup.msi`. The version is shared by the backend,
+macOS bundle, and Windows MSI. Upload both assets before publishing the release;
+GitHub supplies the download digests. The existing CI produces these installers as
+build artifacts; artifacts alone are not published releases.
 
 ## Requirements
 

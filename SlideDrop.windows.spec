@@ -18,6 +18,8 @@ fitz_datas, fitz_binaries, fitz_hiddenimports = collect_all("fitz")
 
 hiddenimports = [
     "main",
+    "updater",
+    "app_version",
     "platform_services",
     "prompt_builder",
     "webview",
@@ -113,4 +115,3 @@ coll = COLLECT(
     upx_exclude=[],
     name="SlideDrop",
 )
-

@@ -199,6 +199,8 @@ def main() -> None:
             min_size=(800, 550),
         )
         window.events.closed += lambda: backend.stop()
+        from updater import updater
+        updater.close_app = window.destroy
 
         try:
             webview.start(debug=False)

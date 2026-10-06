@@ -12,6 +12,7 @@ import { ProcessingView } from "@/components/ProcessingView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UploadZone } from "@/components/UploadZone";
 import { Button } from "@/components/ui/button";
+import { AppUpdateControl } from "@/components/AppUpdateControl";
 
 type AppState =
   | "home"
@@ -186,7 +187,7 @@ export default function Home() {
                 />
                 <ToolCard
                   title="PDF Workspace"
-                  description="Choose several PDFs, set page ranges for each one, drag them into order, and save the merged file with the native folder picker."
+                  description="Choose PDFs, preview and rearrange individual pages, adjust the preview size, and save everything as one merged file."
                   actionLabel="Open Merge Workspace"
                   icon={<FileStack className="h-6 w-6" />}
                   onClick={handleSelectMerge}
@@ -201,6 +202,8 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {appState === "home" && <AppUpdateControl />}
 
           {appState === "convert" && (
             <div className="animate-fade-in-up">

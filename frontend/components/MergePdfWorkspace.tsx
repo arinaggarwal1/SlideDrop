@@ -3,6 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ArrowUp,
+  ArrowDown,
   ArrowUpDown,
   CheckCircle2,
   ExternalLink,
@@ -15,12 +17,14 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api";
+import { PdfPageCanvas, type PdfPageTile } from "@/components/PdfPageCanvas";
 
 interface MergePdfWorkspaceProps {
   onBack: () => void;
 }
 
 interface MergePdfFile {
+  sourceNumber: number;
   path: string;
   filename: string;
   pageCount: number;
@@ -86,9 +90,12 @@ function buildDefaultOutputName(filename: string): string {
 
 export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
   const [files, setFiles] = useState<MergePdfFile[]>([]);
+  const [pageOrder, setPageOrder] = useState<string[]>([]);
   const [outputFolder, setOutputFolder] = useState("");
   const [outputName, setOutputName] = useState("");
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
+  const [fileDropTarget, setFileDropTarget] = useState<{ path: string; after: boolean } | null>(null);
+  const [fileAnnouncement, setFileAnnouncement] = useState("");
   const [isSelectingFiles, setIsSelectingFiles] = useState(false);
   const [isBrowsingFolder, setIsBrowsingFolder] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
@@ -111,6 +118,31 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
   );
   const hasInvalidRanges = fileSummaries.some((file) => Boolean(file.parsed.error));
 
+  const pages = useMemo(() => {
+    const selected: PdfPageTile[] = [];
+    for (const file of fileSummaries) {
+      if (file.parsed.error || file.pageCount === 0) continue;
+      const range = file.pageRange.trim().toLowerCase().replace(/\s+/g, "");
+      const parts = !range || range === "all" ? [defaultRange(file.pageCount)] : range.split(",");
+      const occurrences = new Map<number, number>();
+      for (const part of parts) {
+        const [start, end = start] = part.split("-").map(Number);
+        for (let page = start; page <= end; page++) {
+          const occurrence = (occurrences.get(page) || 0) + 1;
+          occurrences.set(page, occurrence);
+          selected.push({ id: JSON.stringify([file.path, page, occurrence]), path: file.path, filename: file.filename, sourceNumber: file.sourceNumber, page });
+        }
+      }
+    }
+    const byId = new Map(selected.map(page => [page.id, page]));
+    const ordered: PdfPageTile[] = [];
+    for (const id of pageOrder) {
+      const page = byId.get(id);
+      if (page) { ordered.push(page); byId.delete(id); }
+    }
+    return [...ordered, ...byId.values()];
+  }, [fileSummaries, pageOrder]);
+
   const inspectPaths = useCallback(async (paths: string[]) => {
     const res = await fetch(apiUrl("/pdfs/inspect"), {
       method: "POST",
@@ -131,13 +163,14 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
         pageCount: file.page_count,
         pageRange: defaultRange(file.page_count),
       })
-    ) as MergePdfFile[];
+    ) as Omit<MergePdfFile, "sourceNumber">[];
 
     setFiles((current) => {
       const existing = new Map(current.map((file) => [file.path, file]));
+      let sourceNumber = Math.max(0, ...current.map(file => file.sourceNumber));
       for (const file of nextFiles) {
         if (!existing.has(file.path)) {
-          existing.set(file.path, file);
+          existing.set(file.path, { ...file, sourceNumber: ++sourceNumber });
         }
       }
       return Array.from(existing.values());
@@ -227,7 +260,15 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
     );
   }, []);
 
-  const moveFile = useCallback((fromPath: string, toPath: string) => {
+  const moveFile = useCallback((fromPath: string, toPath: string, after?: boolean) => {
+    if (isMerging || fromPath === toPath) return;
+    const from = files.findIndex(file => file.path === fromPath);
+    const target = files.findIndex(file => file.path === toPath);
+    if (from < 0 || target < 0) return;
+    const destination = after === undefined ? target : target + Number(after) - Number(from < target);
+    if (from === destination) return;
+    setPageOrder([]);
+    setFileAnnouncement(`${files[from].filename} moved to position ${destination + 1} of ${files.length}.`);
     setFiles((current) => {
       const fromIndex = current.findIndex((file) => file.path === fromPath);
       const toIndex = current.findIndex((file) => file.path === toPath);
@@ -237,10 +278,10 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
 
       const next = [...current];
       const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
+      next.splice(destination, 0, moved);
       return next;
     });
-  }, []);
+  }, [files, isMerging]);
 
   const handleMerge = useCallback(async () => {
     if (files.length === 0) {
@@ -260,9 +301,9 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          files: files.map((file) => ({
-            path: file.path,
-            page_range: file.pageRange,
+          files: pages.map((page) => ({
+            path: page.path,
+            page_range: String(page.page),
           })),
           output_folder: outputFolder.trim() || undefined,
           output_name: outputName.trim() || undefined,
@@ -288,10 +329,11 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
     } finally {
       setIsMerging(false);
     }
-  }, [files, hasInvalidRanges, outputFolder, outputName]);
+  }, [files, pages, hasInvalidRanges, outputFolder, outputName]);
 
   const handleReset = useCallback(() => {
     setFiles([]);
+    setPageOrder([]);
     setOutputFolder("");
     setOutputName("");
     setSuccess(null);
@@ -397,7 +439,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
 
         <div className="flex items-center gap-2 rounded-xl border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2 text-sm text-muted-foreground dark:bg-[linear-gradient(180deg,rgba(29,33,46,0.96),rgba(24,28,40,0.92))]">
           <ArrowUpDown className="h-4 w-4 text-primary" />
-          Drag cards to reorder before merging
+          Drag the grip or use arrows to reorder PDFs
         </div>
       </div>
 
@@ -437,108 +479,85 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="px-1 text-xs text-muted-foreground">Reordering PDFs groups their pages in this order and resets any custom page arrangement.</p>
+              <p role="status" className="sr-only">{fileAnnouncement}</p>
               {fileSummaries.map((file, index) => (
                 <article
                   key={file.path}
-                  draggable
-                  onDragStart={() => setDraggedPath(file.path)}
-                  onDragEnd={() => setDraggedPath(null)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => {
-                    if (draggedPath) {
-                      moveFile(draggedPath, file.path);
+                  aria-label={`PDF ${file.sourceNumber}: ${file.filename}, position ${index + 1}`}
+                  onDragOver={(event) => {
+                    if (!draggedPath || isMerging) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    setFileDropTarget({ path: file.path, after: event.clientY > bounds.top + bounds.height / 2 });
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggedPath && fileDropTarget?.path === file.path) {
+                      moveFile(draggedPath, file.path, fileDropTarget.after);
                     }
                     setDraggedPath(null);
+                    setFileDropTarget(null);
                   }}
-                  className={`rounded-2xl border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,250,252,0.95))] p-5 shadow-sm transition-all duration-200 dark:bg-[linear-gradient(180deg,rgba(29,33,46,0.98),rgba(24,28,40,0.94))] ${
-                    draggedPath === file.path
-                      ? "border-primary/60"
-                      : "border-border/70 hover:border-primary/35"
-                  }`}
+                  className={`relative rounded-xl border bg-card p-3 ${draggedPath === file.path ? "border-primary/50 opacity-50" : "border-border"}`}
                 >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex min-w-0 gap-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-primary">
-                        <span className="text-sm font-semibold">{index + 1}</span>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <GripVertical className="h-4 w-4" />
-                          <span className="text-xs font-medium">
-                            Drag to reorder
-                          </span>
-                        </div>
-                        <h3 className="mt-2 truncate text-lg font-semibold text-foreground">
-                          {file.filename}
-                        </h3>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {file.pageCount} total {file.pageCount === 1 ? "page" : "pages"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <Button
+                  {fileDropTarget?.path === file.path && draggedPath !== file.path && (
+                    <div className={`pointer-events-none absolute -left-1 -right-1 z-10 h-1 rounded-full bg-primary ${fileDropTarget.after ? "-bottom-1.5" : "-top-1.5"}`} />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
                       type="button"
-                      variant="ghost"
-                      className="h-10 rounded-xl px-3 text-muted-foreground hover:text-destructive cursor-pointer"
-                      onClick={() => handleRemoveFile(file.path)}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Remove
-                    </Button>
-                  </div>
-
-                  <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-                      <div className="flex-1">
-                        <label className="text-sm font-medium text-foreground">
-                          Pages to include
-                        </label>
-                        <input
-                          type="text"
-                          value={file.pageRange}
-                          onChange={(event) => handleUpdateRange(file.path, event.target.value)}
-                          placeholder="all or 1-3,5,8-10"
-                          className={`mt-2 flex h-11 w-full rounded-2xl border bg-background/90 px-4 py-2 text-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                            file.parsed.error ? "border-destructive/40" : "border-input"
-                          }`}
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-10 rounded-xl cursor-pointer"
-                          onClick={() => handleUpdateRange(file.path, "all")}
-                        >
-                          All Pages
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-10 rounded-xl cursor-pointer"
-                          onClick={() => handleUpdateRange(file.path, "1")}
-                        >
-                          First Page
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-10 rounded-xl cursor-pointer"
-                          onClick={() => handleUpdateRange(file.path, defaultRange(file.pageCount))}
-                        >
-                          Reset
-                        </Button>
-                      </div>
+                      draggable={!isMerging}
+                      disabled={isMerging}
+                      aria-label={`Drag ${file.filename} to reorder; use the adjacent arrows for keyboard control`}
+                      title="Drag to reorder"
+                      onDragStart={(event) => {
+                        setDraggedPath(file.path);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", file.path);
+                        const row = event.currentTarget.closest("article");
+                        if (row) event.dataTransfer.setDragImage(row, 20, 20);
+                      }}
+                      onDragEnd={() => { setDraggedPath(null); setFileDropTarget(null); }}
+                      className="flex h-9 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                    ><GripVertical className="h-4 w-4" /></button>
+                    <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs font-semibold text-primary">PDF {file.sourceNumber}</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 title={file.filename} className="truncate text-sm font-semibold">{file.filename}</h3>
+                      <p className="text-xs text-muted-foreground">{file.parsed.error ? "Check page selection" : `${file.parsed.count} of ${file.pageCount} pages`}</p>
                     </div>
-
-                    <p className={`mt-3 text-sm ${file.parsed.error ? "text-destructive" : "text-muted-foreground"}`}>
-                      {file.parsed.error
-                        ? file.parsed.error
-                        : `${file.parsed.count} ${file.parsed.count === 1 ? "page" : "pages"} selected from this PDF.`}
-                    </p>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={isMerging || index === 0}
+                        aria-label={`Move ${file.filename} up`} title="Move PDF up"
+                        onClick={() => moveFile(file.path, files[index - 1].path)}><ArrowUp className="h-4 w-4" /></Button>
+                      <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={isMerging || index === files.length - 1}
+                        aria-label={`Move ${file.filename} down`} title="Move PDF down"
+                        onClick={() => moveFile(file.path, files[index + 1].path)}><ArrowDown className="h-4 w-4" /></Button>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        disabled={isMerging} aria-label={`Remove ${file.filename}`} title="Remove PDF"
+                        onClick={() => handleRemoveFile(file.path)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
                   </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 pl-9">
+                    <label htmlFor={`pdf-range-${file.sourceNumber}`} className="text-xs text-muted-foreground">Pages</label>
+                    <input
+                      id={`pdf-range-${file.sourceNumber}`}
+                      type="text"
+                      value={file.pageRange}
+                      disabled={isMerging}
+                      aria-invalid={Boolean(file.parsed.error)}
+                      aria-describedby={file.parsed.error ? `pdf-error-${file.sourceNumber}` : undefined}
+                      onChange={(event) => handleUpdateRange(file.path, event.target.value)}
+                      placeholder="all or 1-3,5"
+                      className={`h-8 w-32 min-w-0 rounded-md border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${file.parsed.error ? "border-destructive" : "border-input"}`}
+                    />
+                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" disabled={isMerging} onClick={() => handleUpdateRange(file.path, "all")}>All</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" disabled={isMerging} onClick={() => handleUpdateRange(file.path, "1")}>First page</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" disabled={isMerging} onClick={() => handleUpdateRange(file.path, defaultRange(file.pageCount))}>Reset</Button>
+                  </div>
+                  {file.parsed.error && <p id={`pdf-error-${file.sourceNumber}`} role="alert" className="mt-2 pl-9 text-xs text-destructive">{file.parsed.error}</p>}
                 </article>
               ))}
             </div>
@@ -619,7 +638,7 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
                 size="lg"
                 className="h-12 w-full rounded-2xl cursor-pointer text-base shadow-lg shadow-primary/20"
                 onClick={handleMerge}
-                disabled={isMerging || files.length === 0 || hasInvalidRanges}
+                disabled={isMerging || pages.length === 0 || hasInvalidRanges}
               >
                 <FileText className="mr-2 h-4 w-4" />
                 {isMerging ? "Merging PDFs..." : "Merge PDFs"}
@@ -628,6 +647,13 @@ export function MergePdfWorkspace({ onBack }: MergePdfWorkspaceProps) {
           </div>
         </aside>
       </div>
+      {files.length > 0 && (
+        <>
+          <p className="mt-5 text-sm text-muted-foreground">Source numbers stay with each PDF. Changing ranges preserves the order of arranged pages. New PDFs are added at the end. Reset order restores the PDF list order.</p>
+          {hasInvalidRanges && <p role="alert" className="mt-2 text-sm text-destructive">Fix the page ranges above to see all selected pages and merge.</p>}
+          <PdfPageCanvas pages={pages} onReorder={setPageOrder} onReset={() => setPageOrder([])} disabled={isMerging || hasInvalidRanges} />
+        </>
+      )}
     </div>
   );
 }

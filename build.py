@@ -15,7 +15,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-APP_VERSION = "1.1.0"
+from backend.app_version import APP_VERSION
 
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None):

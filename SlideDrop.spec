@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import runpy
 
 from PyInstaller.utils.hooks import collect_all
 
 project_dir = Path(os.getcwd())
 backend_dir = project_dir / "backend"
+app_version = runpy.run_path(str(backend_dir / "app_version.py"))["APP_VERSION"]
 icon_path = project_dir / "resources" / "app.icns"
 
 webview_datas, webview_binaries, webview_hiddenimports = collect_all("webview")
@@ -19,6 +21,8 @@ pypdf_datas, pypdf_binaries, pypdf_hiddenimports = collect_all("pypdf")
 
 hiddenimports = [
     "main",
+    "updater",
+    "app_version",
     "platform_services",
     "prompt_builder",
     "webview",
@@ -121,8 +125,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "SlideDrop",
         "CFBundleDisplayName": "SlideDrop",
-        "CFBundleVersion": "1.1.0",
-        "CFBundleShortVersionString": "1.1.0",
+        "CFBundleVersion": app_version,
+        "CFBundleShortVersionString": app_version,
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "12.0",
     },

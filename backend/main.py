@@ -19,7 +19,11 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from converters.pdf_preview import render_preview
+from app_version import APP_VERSION
+from updater import updater
+import secrets
 from pydantic import BaseModel, ConfigDict
 from pypdf import PdfReader, PdfWriter
 
@@ -98,7 +102,7 @@ _FRONTEND_DIR = _resolve_frontend_dir()
 # App setup
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="SlideDrop API", version="1.1.0")
+app = FastAPI(title="SlideDrop API", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -491,6 +495,41 @@ def _build_output_pdf_path(output_folder: Optional[str], output_name: Optional[s
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@app.get("/updates/status")
+def update_status():
+    return updater.snapshot()
+
+
+@app.get("/updates/check")
+def check_for_update():
+    return updater.check()
+
+
+def _validate_update_request(request: Request):
+    if not secrets.compare_digest(request.headers.get("X-SlideDrop-Update-Token", ""), updater.token):
+        raise HTTPException(status_code=403, detail="Reopen the update panel and try again.")
+
+
+@app.post("/updates/download")
+def download_update(request: Request):
+    _validate_update_request(request)
+    try:
+        updater.start_download()
+        return updater.snapshot()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/updates/install")
+def install_update(request: Request):
+    _validate_update_request(request)
+    try:
+        updater.install()
+        return updater.snapshot()
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.post("/upload", response_model=UploadResponse)
 async def upload_file(file: UploadFile = File(...)):
     """Upload a PPTX or PDF file and get metadata back."""
@@ -643,6 +682,24 @@ async def inspect_pdf_files(req: InspectPdfFilesRequest):
     return InspectPdfFilesResponse(files=inspected)
 
 
+@app.get("/pdfs/preview")
+def pdf_preview(path: str, page: int):
+    """Render one thumbnail off the event loop; never alter the source PDF."""
+    source = Path(path).expanduser().resolve()
+    if source.suffix.lower() != ".pdf" or not source.is_file():
+        raise HTTPException(status_code=404, detail="PDF not found.")
+    try:
+        if page < 1 or page > len(PdfReader(str(source)).pages):
+            raise HTTPException(status_code=400, detail="Page is outside this PDF.")
+        stat = source.stat()
+        content = render_preview(str(source), page, stat.st_mtime_ns, stat.st_size)
+        return Response(content, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=60"})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Could not preview this page: {exc}")
+
+
 @app.post("/dialog/select-and-merge-pdfs", response_model=UploadResponse)
 async def select_and_merge_pdfs_dialog():
     """Open a native PDF picker, merge the selected files, and create a job."""
@@ -686,6 +743,7 @@ async def merge_pdfs(req: MergePdfsRequest):
     total_pages = 0
 
     try:
+        readers = {}
         for item in req.files:
             source_path = Path(item.path).expanduser().resolve()
             if source_path.suffix.lower() != ".pdf":
@@ -693,7 +751,10 @@ async def merge_pdfs(req: MergePdfsRequest):
             if not source_path.exists():
                 raise HTTPException(status_code=404, detail=f"File not found: {source_path}")
 
-            reader = PdfReader(str(source_path))
+            source_key = str(source_path)
+            if source_key not in readers:
+                readers[source_key] = PdfReader(source_key)
+            reader = readers[source_key]
             page_indices = _parse_page_selection(item.page_range, len(reader.pages))
             for index in page_indices:
                 writer.add_page(reader.pages[index])
@@ -717,7 +778,7 @@ async def merge_pdfs(req: MergePdfsRequest):
         output_folder=str(destination.parent),
         filename=destination.name,
         page_count=total_pages,
-        source_count=len(req.files),
+        source_count=len(readers),
     )
 
 
