@@ -47,6 +47,46 @@ jobs:
         run: python -m pip install -r backend/requirements.txt pyinstaller
       - name: Build native app
         run: python build.py
+      - name: Test Windows MSI install and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msi = (Resolve-Path "dist\SlideDrop-Setup.msi").Path
+          $installLog = Join-Path $PWD "build\msi-install.log"
+          $uninstallLog = Join-Path $PWD "build\msi-uninstall.log"
+
+          $install = Start-Process msiexec.exe `
+            -ArgumentList @("/i", "`"$msi`"", "/qn", "/norestart", "/L*v", "`"$installLog`"") `
+            -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            Get-Content $installLog
+            throw "MSI install failed with exit code $($install.ExitCode)"
+          }
+
+          $installedFiles = @(
+            "$env:ProgramFiles\SlideDrop\SlideDrop.exe",
+            "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\SlideDrop\SlideDrop.lnk",
+            "$env:Public\Desktop\SlideDrop.lnk"
+          )
+          foreach ($path in $installedFiles) {
+            if (-not (Test-Path $path)) {
+              throw "Expected installed item was not found: $path"
+            }
+          }
+
+          $uninstall = Start-Process msiexec.exe `
+            -ArgumentList @("/x", "`"$msi`"", "/qn", "/norestart", "/L*v", "`"$uninstallLog`"") `
+            -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            Get-Content $uninstallLog
+            throw "MSI uninstall failed with exit code $($uninstall.ExitCode)"
+          }
+
+          foreach ($path in $installedFiles) {
+            if (Test-Path $path) {
+              throw "MSI uninstall left an installed item behind: $path"
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
