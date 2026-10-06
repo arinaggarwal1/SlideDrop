@@ -15,8 +15,8 @@
       Schedule="afterInstallInitialize" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <Icon Id="SlideDropIcon" SourceFile="$(IconSource)" />
-    <Property Id="ARPPRODUCTICON" Value="SlideDropIcon" />
+    <Icon Id="SlideDropIcon.ico" SourceFile="$(IconSource)" />
+    <Property Id="ARPPRODUCTICON" Value="SlideDropIcon.ico" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/arinaggarwal1/SlideDrop" />
     <Property Id="ARPNOMODIFY" Value="1" />
 
@@ -42,7 +42,6 @@
           Name="SlideDrop"
           Description="Slide conversion and PDF assembly"
           WorkingDirectory="INSTALLFOLDER"
-          Icon="SlideDropIcon"
           Advertise="yes" />
         <Shortcut
           Id="DesktopShortcut"
@@ -50,7 +49,6 @@
           Name="SlideDrop"
           Description="Slide conversion and PDF assembly"
           WorkingDirectory="INSTALLFOLDER"
-          Icon="SlideDropIcon"
           Advertise="yes" />
       </File>
       <RemoveFolder
