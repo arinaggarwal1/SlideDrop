@@ -121,6 +121,11 @@ Development runs can check releases but cannot replace the running source checko
 The first build containing the updater must be installed normally; subsequent
 published versions can be installed through the app.
 
+**macOS v1.2.0/v1.2.1 users:** these versions contain a compatibility-check bug
+that prevents in-app updates. Download v1.2.2 or newer from GitHub, quit SlideDrop,
+and replace the app in Applications once. The failed check does not replace or
+damage the installed app. Future updates use the corrected check.
+
 For each release, update `backend/app_version.py`, build on each target OS with
 `python build.py`, and publish a matching `vX.Y.Z` GitHub Release with
 `SlideDrop.dmg` and `SlideDrop-Setup.msi`. The version is shared by the backend,

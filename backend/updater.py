@@ -64,6 +64,20 @@ def select_asset(release: dict) -> dict | None:
     return None
 
 
+def verify_mac_architecture(executable: Path):
+    # -verify_arch consumes all following arguments as architecture names.
+    # The input executable must precede it.
+    result = subprocess.run(
+        ["/usr/bin/lipo", str(executable), "-verify_arch", platform.machine()],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            "The downloaded app could not be verified for this Mac’s processor. "
+            "Your installed app has not been changed."
+        )
+
+
 # The old bundle is retained beside the new one for recovery. No broad deletion.
 MAC_HELPER = r'''#!/bin/sh
 pid="$1"; staged="$2"; target="$3"; backup="$4"
@@ -207,7 +221,7 @@ class AppUpdater:
             if version_tuple(info.get("CFBundleShortVersionString", "")) != version_tuple(self.state["latest_version"]):
                 raise ValueError("The downloaded app version does not match its release.")
             executable = app / "Contents" / "MacOS" / "SlideDrop"
-            subprocess.run(["/usr/bin/lipo", "-verify_arch", platform.machine(), str(executable)], check=True, timeout=30)
+            verify_mac_architecture(executable)
             staging = Path(tempfile.mkdtemp(prefix=".slidedrop-update-", dir=self.target.parent)) / "SlideDrop.app"
             subprocess.run(["/usr/bin/ditto", str(app), str(staging)], check=True, timeout=180)
             return staging

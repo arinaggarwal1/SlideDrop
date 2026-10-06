@@ -24,6 +24,16 @@ def release(version="v9.0.0", content=b"installer"):
 
 
 class UpdateTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "darwin", "macOS architecture verification")
+    def test_real_macos_executable_passes_architecture_check(self):
+        # Exercise the real command parser, not a mock that accepts bad flags.
+        module.verify_mac_architecture(Path(sys.executable))
+
+    def test_incompatible_architecture_has_readable_error(self):
+        with patch.object(module.subprocess, "run", return_value=Mock(returncode=1)):
+            with self.assertRaisesRegex(ValueError, "processor"):
+                module.verify_mac_architecture(Path("/test/SlideDrop"))
+
     def api_client(self, payload, status=200):
         return httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(status, json=payload)))
 
@@ -141,7 +151,7 @@ class UpdateTests(unittest.TestCase):
         script = base64.b64decode(command[-1]).decode("utf-16-le")
         self.assertIn("Wait-Process", script)
         self.assertIn("msiexec.exe", script)
-        self.assertIn("C:/Test Folder/SlideDrop-Setup.msi", script)
+        self.assertIn(str(updater.download), script)
         self.assertEqual(updater.snapshot()["status"], "installing")
 
 
